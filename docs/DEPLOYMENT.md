@@ -19,13 +19,17 @@ sudo DOMAIN=watch.example.com bash install-v2.sh
 ```
 
 The installer will:
-1. Install `ffmpeg`, `iptables`, `curl`, and Node LTS.
+1. Install `ffmpeg`, `iptables`, `curl`, and Node.js 24 LTS when the installed version is below 22.13.
 2. Create the system user `watchroom`.
 3. Set up `/var/lib/watchroom/media` and `/var/lib/watchroom/data`.
-4. Build the React frontend into `public/`.
+4. Build the React frontend into the canonical `public/` directory.
 5. Install and enable `watchroom-egress.service` and `watchroom.service`.
 6. Configure Caddy for automated TLS certificates (if `DOMAIN` is supplied).
 7. Execute post-install verification checks (health, firewall guard, public access).
+
+The production systemd service requires the egress firewall unit. Do not set `MEDIA_EGRESS_PROTECTED=true` in another deployment unless an equivalent OS/container egress policy is active. Local development can opt into unprotected remote conversion with `ALLOW_UNSAFE_MEDIA_FETCHES=true`; never expose that mode to untrusted users.
+
+During upgrades, the installer stops the existing service and migrates `/opt/watchroom/data/watchroom.db` to `/var/lib/watchroom/data/watchroom.db` only when the destination database does not already exist. Workspace `data/` and `media/` directories are excluded from deployment sync.
 
 ---
 
@@ -80,8 +84,8 @@ sudo systemctl restart watchroom-egress
 To verify the egress firewall manually:
 
 ```bash
-# Should FAIL (blocked by kernel firewall for watchroom user):
-sudo -u watchroom curl -m 3 http://10.0.0.1/ ; echo "exit=$?"
+# Should FAIL (blocked by kernel firewall for watchroom user while the server is running):
+sudo -u watchroom curl -m 3 http://127.0.0.1:3000/healthz ; echo "exit=$?"
 
 # Should SUCCEED (reaches public internet):
 sudo -u watchroom curl -m 5 -o /dev/null -w '%{http_code}\n' https://www.google.com

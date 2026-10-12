@@ -108,8 +108,8 @@ io.on('connection', socket => {
     const roomId = socket.data.roomId;
     if (!roomId) return;
     try {
-      await roomManager.prepareRoomMedia(roomId, data.url, data.audioTrackIndex || 0);
-      if (typeof callback === 'function') callback({ success: true });
+      const result = await roomManager.prepareRoomMedia(roomId, data.url, data.audioTrackIndex || 0, socket);
+      if (typeof callback === 'function') callback(result || { success: false, error: 'Room not found' });
     } catch (err) {
       if (typeof callback === 'function') callback({ success: false, error: err.message });
     }
@@ -119,7 +119,7 @@ io.on('connection', socket => {
     const roomId = socket.data.roomId;
     if (!roomId) return;
     try {
-      await roomManager.addToPlaylist(roomId, data);
+      await roomManager.addToPlaylist(roomId, data, socket);
       if (typeof callback === 'function') callback({ success: true });
     } catch (err) {
       if (typeof callback === 'function') callback({ success: false, error: err.message });
@@ -147,19 +147,15 @@ io.on('connection', socket => {
   });
 });
 
-// Serve frontend static build if exists (public directory or web/dist)
+// Vite builds directly into public; web/dist is retained as a legacy fallback.
 const publicDir = path.join(__dirname, 'public');
 const webDistDir = path.join(__dirname, 'web', 'dist');
 
-if (fs.existsSync(publicDir)) {
-  app.use(express.static(publicDir));
+const frontendDir = fs.existsSync(publicDir) ? publicDir : webDistDir;
+if (fs.existsSync(frontendDir)) {
+  app.use(express.static(frontendDir));
   app.use((req, res) => {
-    res.sendFile(path.join(publicDir, 'index.html'));
-  });
-} else if (fs.existsSync(webDistDir)) {
-  app.use(express.static(webDistDir));
-  app.use((req, res) => {
-    res.sendFile(path.join(webDistDir, 'index.html'));
+    res.sendFile(path.join(frontendDir, 'index.html'));
   });
 }
 

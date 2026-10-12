@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { WifiOff } from 'lucide-react';
 import { RoomHeader } from './RoomHeader';
 import { Player } from './Player';
 import { PlaylistPanel, type PlaylistPanelRef } from './PlaylistPanel';
@@ -22,6 +23,8 @@ export const RoomView: React.FC<RoomViewProps> = ({ roomHook, currentUserName })
     playlist,
     chatMessages,
     playback,
+    connected,
+    isRestoringRoom,
     sendControl,
     addToPlaylist,
     removeFromPlaylist,
@@ -47,6 +50,13 @@ export const RoomView: React.FC<RoomViewProps> = ({ roomHook, currentUserName })
 
   return (
     <div className="flex flex-col gap-4 pb-12 w-full max-w-7xl mx-auto">
+      {(!connected || isRestoringRoom) && (
+        <div role="status" className="flex items-center gap-2 border border-amber-400/30 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+          <WifiOff className="h-4 w-4 shrink-0" />
+          <span>{isRestoringRoom ? 'Restoring room connection…' : 'Connection lost. Reconnecting…'}</span>
+        </div>
+      )}
+
       {/* Room Header */}
       <RoomHeader
         roomId={activeRoomId}

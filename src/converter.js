@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertMediaEgressProtection } from './security.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +18,10 @@ if (!fs.existsSync(MEDIA_DIR)) {
 export const LIMITS = {
   jobs: 4,               // Max movies kept/converted at once
   reencode: 1,           // Max heavy HEVC/AV1 re-encodes at once
-  idleCleanupMs: 30 * 60 * 1000 // 30 minutes without viewers
+  idleCleanupMs: 30 * 60 * 1000, // 30 minutes without viewers
+  probeTimeoutMs: 60 * 1000,
+  conversionTimeoutMs: 6 * 60 * 60 * 1000,
+  maxProbeOutputBytes: 8 * 1024 * 1024
 };
 
 // In-memory job state: key -> job
@@ -48,26 +52,68 @@ export function getJobKey(url, audioTrack = 0) {
   return `wr_${hash}`;
 }
 
+function getInputProtocolWhitelist(url) {
+  try {
+    const protocol = new URL(url).protocol;
+    if (protocol === 'http:' || protocol === 'https:') return 'http,https,tcp,tls,crypto';
+  } catch { }
+  return 'file,pipe';
+}
+
 /**
  * Probe media source using ffprobe
  */
 export function probeSource(url) {
+  try {
+    assertMediaEgressProtection(url);
+  } catch (err) {
+    return Promise.reject(err);
+  }
+
   return new Promise((resolve, reject) => {
     const proc = spawn('ffprobe', [
       '-v', 'error',
       '-print_format', 'json',
       '-show_format',
       '-show_streams',
+      '-protocol_whitelist', getInputProtocolWhitelist(url),
       url
     ]);
 
     let stdout = '';
-    let stderr = '';
+    let stdoutBytes = 0;
+    let timedOut = false;
+    let outputTooLarge = false;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      proc.kill();
+    }, LIMITS.probeTimeoutMs);
 
-    proc.stdout.on('data', chunk => { stdout += chunk; });
-    proc.stderr.on('data', chunk => { stderr += chunk; });
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    };
+
+    proc.stdout.on('data', chunk => {
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > LIMITS.maxProbeOutputBytes) {
+        outputTooLarge = true;
+        proc.kill();
+      } else {
+        stdout += chunk;
+      }
+    });
+    proc.stderr.on('data', () => { });
 
     proc.on('close', code => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (timedOut) return reject(new Error('Media probe timed out'));
+      if (outputTooLarge) return reject(new Error('Media probe output exceeded the limit'));
       if (code !== 0) {
         return reject(new Error('Cannot read this link as video'));
       }
@@ -113,9 +159,7 @@ export function probeSource(url) {
       }
     });
 
-    proc.on('error', () => {
-      reject(new Error('Cannot read this link as video'));
-    });
+    proc.on('error', () => fail(new Error('Cannot read this link as video')));
   });
 }
 
@@ -131,19 +175,85 @@ export function isDirectBrowserPlayable(url) {
   }
 }
 
+function releaseReencode(job) {
+  if (!job.isReencoding) return;
+  currentReencodes = Math.max(0, currentReencodes - 1);
+  job.isReencoding = false;
+}
+
+function convertToHls(job, probeInfo, audioTrackIndex) {
+  return new Promise((resolve, reject) => {
+    const ffmpegArgs = [
+      '-y',
+      '-protocol_whitelist', getInputProtocolWhitelist(job.url),
+      '-i', job.url,
+      '-map', '0:v:0'
+    ];
+    if (probeInfo.isH264) {
+      ffmpegArgs.push('-c:v', 'copy');
+    } else {
+      ffmpegArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23');
+    }
+
+    const chosenAudio = probeInfo.audioStreams[audioTrackIndex] || probeInfo.audioStreams[0];
+    ffmpegArgs.push('-map', chosenAudio ? `0:a:${chosenAudio.index}` : '0:a:0?');
+    ffmpegArgs.push('-c:a', 'aac', '-ac', '2', '-b:a', '192k');
+    ffmpegArgs.push(
+      '-f', 'hls',
+      '-hls_time', '4',
+      '-hls_list_size', '0',
+      '-hls_segment_filename', path.join(job.outDir, 'seg-%04d.ts'),
+      '-progress', 'pipe:1',
+      path.join(job.outDir, 'index.m3u8')
+    );
+
+    const proc = spawn('ffmpeg', ffmpegArgs);
+    const durationUs = (probeInfo.duration || 1) * 1000000;
+    let progressBuffer = '';
+    let timedOut = false;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      proc.kill();
+    }, LIMITS.conversionTimeoutMs);
+
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve();
+    };
+
+    proc.stdout.on('data', chunk => {
+      progressBuffer = (progressBuffer + chunk.toString()).slice(-65536);
+      const lines = progressBuffer.split(/\r?\n/);
+      progressBuffer = lines.pop() || '';
+      for (const line of lines) {
+        const match = line.match(/^out_time_us=(\d+)$/);
+        if (!match) continue;
+        const progress = Math.max(0, Math.min(99, Math.round((Number(match[1]) / durationUs) * 100)));
+        for (const listener of job.listeners) {
+          try { listener({ key: job.key, progress, status: 'converting' }); } catch { }
+        }
+      }
+    });
+    proc.stderr.on('data', () => { });
+    proc.once('error', () => finish(new Error('Cannot read this link as video')));
+    proc.once('close', code => {
+      if (timedOut) return finish(new Error('Media conversion timed out'));
+      if (code !== 0) return finish(new Error('Cannot read this link as video'));
+      finish();
+    });
+  });
+}
+
 /**
- * Prepares video source: converts MKV / non-browser formats to HLS.
- * Shared jobs: Everyone playing the same URL shares one conversion.
- * Tracks progress and emits updates via onProgress callback.
+ * Prepares video source: converts unsupported formats to HLS and shares concurrent jobs.
  */
 export async function prepareMedia(url, audioTrackIndex = 0, onProgress = null) {
-  // If already a direct playable link, return direct
   if (isDirectBrowserPlayable(url)) {
-    return {
-      type: 'direct',
-      src: url,
-      direct: true
-    };
+    return { type: 'direct', src: url, direct: true };
   }
 
   const key = getJobKey(url, audioTrackIndex);
@@ -151,165 +261,76 @@ export async function prepareMedia(url, audioTrackIndex = 0, onProgress = null) 
   const playlistFile = path.join(outDir, 'index.m3u8');
   const vttFile = path.join(outDir, 'subtitles.vtt');
 
-  // If already completed on disk, return existing conversion
   if (fs.existsSync(playlistFile) && fs.statSync(playlistFile).size > 0) {
     const hasSubtitles = fs.existsSync(vttFile);
     touchJob(key);
     return {
-      type: 'hls',
-      key,
-      src: `/media/${key}/index.m3u8`,
+      type: 'hls', key, src: `/media/${key}/index.m3u8`,
       subtitles: hasSubtitles ? `/media/${key}/subtitles.vtt` : null,
       ready: true
     };
   }
 
-  // Check if job is currently in progress
-  let existingJob = activeJobs.get(key);
+  const existingJob = activeJobs.get(key);
   if (existingJob) {
+    if (onProgress) existingJob.listeners.add(onProgress);
     touchJob(key);
-    if (onProgress) {
-      existingJob.listeners.add(onProgress);
-    }
     return existingJob.promise;
   }
 
-  // Check active jobs capacity (LIMITS.jobs = 4)
   if (activeJobs.size >= LIMITS.jobs) {
     throw new Error('Server is busy with other movies');
   }
 
-  // Probe media source
-  const probeInfo = await probeSource(url);
-  const needsReencode = !probeInfo.isH264;
-
-  if (needsReencode && currentReencodes >= LIMITS.reencode) {
-    throw new Error('Server is busy converting another movie');
-  }
-
-  // Create job output directory
-  fs.mkdirSync(outDir, { recursive: true });
-
-  const jobObj = {
+  const job = {
     key,
     url,
-    audioTrackIndex,
     outDir,
-    listeners: new Set(),
-    viewers: 1,
+    listeners: new Set(onProgress ? [onProgress] : []),
     cleanupTimer: null,
-    isReencoding: needsReencode
+    isReencoding: false,
+    promise: null
   };
+  activeJobs.set(key, job);
 
-  if (onProgress) {
-    jobObj.listeners.add(onProgress);
-  }
-
-  if (needsReencode) {
-    currentReencodes++;
-  }
-
-  const conversionPromise = new Promise((resolve, reject) => {
-    // 1. Convert video/audio to HLS
-    const ffmpegArgs = [
-      '-y',
-      '-i', url,
-      '-map', '0:v:0'
-    ];
-
-    if (probeInfo.isH264) {
-      ffmpegArgs.push('-c:v', 'copy');
-    } else {
-      ffmpegArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23');
+  job.promise = Promise.resolve().then(async () => {
+    const probeInfo = await probeSource(url);
+    if (!probeInfo.isH264) {
+      if (currentReencodes >= LIMITS.reencode) {
+        throw new Error('Server is busy converting another movie');
+      }
+      currentReencodes++;
+      job.isReencoding = true;
     }
 
-    // Audio stream selection (Section 10 B)
-    const chosenAudio = probeInfo.audioStreams[audioTrackIndex] || probeInfo.audioStreams[0];
-    if (chosenAudio) {
-      ffmpegArgs.push('-map', `0:a:${chosenAudio.index}`);
-    } else {
-      ffmpegArgs.push('-map', '0:a:0?');
+    fs.mkdirSync(outDir, { recursive: true });
+    await convertToHls(job, probeInfo, audioTrackIndex);
+    releaseReencode(job);
+
+    let hasSubtitles = false;
+    if (probeInfo.subtitleStreams.length > 0) {
+      const englishSubtitle = probeInfo.subtitleStreams.find(stream =>
+        stream.language.toLowerCase().includes('en')) || probeInfo.subtitleStreams[0];
+      hasSubtitles = await extractSubtitles(url, englishSubtitle.index, vttFile) && fs.existsSync(vttFile);
     }
-    ffmpegArgs.push('-c:a', 'aac', '-ac', '2', '-b:a', '192k');
 
-    // HLS packaging options
-    ffmpegArgs.push(
-      '-f', 'hls',
-      '-hls_time', '4',
-      '-hls_list_size', '0',
-      '-hls_segment_filename', path.join(outDir, 'seg-%04d.ts'),
-      path.join(outDir, 'index.m3u8'),
-      '-progress', 'pipe:1'
-    );
+    for (const listener of job.listeners) {
+      try { listener({ key, progress: 100, status: 'ready' }); } catch { }
+    }
 
-    const ffmpegProc = spawn('ffmpeg', ffmpegArgs);
-    let totalDurationUs = (probeInfo.duration || 1) * 1000000;
-
-    ffmpegProc.stdout.on('data', chunk => {
-      const text = chunk.toString();
-      const match = text.match(/out_time_us=(\d+)/);
-      if (match) {
-        const outUs = parseInt(match[1], 10);
-        let percent = Math.min(99, Math.round((outUs / totalDurationUs) * 100));
-        if (isNaN(percent) || percent < 0) percent = 0;
-        for (const cb of jobObj.listeners) {
-          try { cb({ key, progress: percent, status: 'converting' }); } catch {}
-        }
-      }
-    });
-
-    ffmpegProc.on('close', async code => {
-      if (needsReencode) {
-        currentReencodes = Math.max(0, currentReencodes - 1);
-      }
-
-      if (code !== 0) {
-        activeJobs.delete(key);
-        try { fs.rmSync(outDir, { recursive: true, force: true }); } catch {}
-        return reject(new Error('Cannot read this link as video'));
-      }
-
-      // 2. Subtitle extraction (Section 10 A):
-      // If subtitle stream exists, extract first English or first subtitle track to WebVTT
-      let hasSubtitles = false;
-      if (probeInfo.subtitleStreams && probeInfo.subtitleStreams.length > 0) {
-        const engSub = probeInfo.subtitleStreams.find(s => s.language.toLowerCase().includes('en')) || probeInfo.subtitleStreams[0];
-        try {
-          await extractSubtitles(url, engSub.index, vttFile);
-          hasSubtitles = fs.existsSync(vttFile);
-        } catch (subErr) {
-          // Non-fatal if subtitle extraction fails
-          console.warn('Subtitle extraction warning:', subErr.message);
-        }
-      }
-
-      for (const cb of jobObj.listeners) {
-        try { cb({ key, progress: 100, status: 'ready' }); } catch {}
-      }
-
-      resolve({
-        type: 'hls',
-        key,
-        src: `/media/${key}/index.m3u8`,
-        subtitles: hasSubtitles ? `/media/${key}/subtitles.vtt` : null,
-        ready: true
-      });
-    });
-
-    ffmpegProc.on('error', err => {
-      if (needsReencode) {
-        currentReencodes = Math.max(0, currentReencodes - 1);
-      }
-      activeJobs.delete(key);
-      try { fs.rmSync(outDir, { recursive: true, force: true }); } catch {}
-      reject(new Error('Cannot read this link as video'));
-    });
+    return {
+      type: 'hls', key, src: `/media/${key}/index.m3u8`,
+      subtitles: hasSubtitles ? `/media/${key}/subtitles.vtt` : null,
+      ready: true
+    };
+  }).catch(error => {
+    releaseReencode(job);
+    if (activeJobs.get(key) === job) activeJobs.delete(key);
+    try { fs.rmSync(outDir, { recursive: true, force: true }); } catch { }
+    throw error;
   });
 
-  jobObj.promise = conversionPromise;
-  activeJobs.set(key, jobObj);
-
-  return conversionPromise;
+  return job.promise;
 }
 
 /**
@@ -319,19 +340,29 @@ function extractSubtitles(sourceUrl, subIndex, destFile) {
   return new Promise((resolve) => {
     const subProc = spawn('ffmpeg', [
       '-y',
+      '-protocol_whitelist', getInputProtocolWhitelist(sourceUrl),
       '-i', sourceUrl,
       '-map', `0:s:${subIndex}`,
       '-f', 'webvtt',
       destFile
     ]);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      subProc.kill();
+    }, LIMITS.probeTimeoutMs);
 
     subProc.on('close', code => {
-      resolve(code === 0);
+      clearTimeout(timeout);
+      resolve(code === 0 && !timedOut);
     });
 
     subProc.on('error', () => {
+      clearTimeout(timeout);
       resolve(false);
     });
+    subProc.stdout.on('data', () => { });
+    subProc.stderr.on('data', () => { });
   });
 }
 
@@ -366,4 +397,5 @@ export function scheduleJobCleanup(key) {
       console.error(`Failed to clean up media ${key}:`, e);
     }
   }, LIMITS.idleCleanupMs);
+  job.cleanupTimer.unref?.();
 }

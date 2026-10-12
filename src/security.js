@@ -51,6 +51,28 @@ export async function validateUrl(inputUrl) {
   return parsed;
 }
 
+export function assertMediaEgressProtection(inputUrl) {
+  if (typeof inputUrl === 'string' && /^[a-zA-Z]:[\\/]/.test(inputUrl)) return;
+
+  let parsed;
+  try {
+    parsed = new URL(inputUrl);
+  } catch {
+    return;
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('That address is not allowed');
+  }
+
+  const protectedEgress = process.env.MEDIA_EGRESS_PROTECTED === 'true';
+  const explicitLocalOverride = process.env.NODE_ENV !== 'production' &&
+    process.env.ALLOW_UNSAFE_MEDIA_FETCHES === 'true';
+  if (!protectedEgress && !explicitLocalOverride) {
+    throw new Error('Remote media conversion requires OS-level egress protection.');
+  }
+}
+
 export function isForbiddenIp(ipStr) {
   try {
     let addr = ipaddr.parse(ipStr);

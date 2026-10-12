@@ -1,11 +1,12 @@
 import { DatabaseSync } from 'node:sqlite';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -13,6 +14,16 @@ if (!fs.existsSync(DATA_DIR)) {
 
 const DB_PATH = path.join(DATA_DIR, 'watchroom.db');
 const db = new DatabaseSync(DB_PATH);
+
+function hashRoomPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `scrypt$${salt}$${hash}`;
+}
+
+function isRoomPasswordHash(value) {
+  return typeof value === 'string' && /^scrypt\$[a-f0-9]{32}\$[a-f0-9]{128}$/.test(value);
+}
 
 // Initialize schema
 db.exec(`
@@ -49,7 +60,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_playlist_room ON playlist_items(room_id, position);
 `);
 
+const legacyRooms = db.prepare('SELECT id, password FROM rooms').all();
+const migratePassword = db.prepare('UPDATE rooms SET password = ? WHERE id = ?');
+for (const room of legacyRooms) {
+  if (!isRoomPasswordHash(room.password)) {
+    migratePassword.run(hashRoomPassword(room.password), room.id);
+  }
+}
+
 export const DB = {
+  close() {
+    db.close();
+  },
+
   getRooms() {
     return db.prepare('SELECT id, name, host_only, created_at FROM rooms ORDER BY created_at DESC').all();
   },
@@ -63,8 +86,19 @@ export const DB = {
       INSERT INTO rooms (id, name, password, host_only, created_at)
       VALUES (?, ?, ?, ?, ?)
     `);
-    stmt.run(id, name, password, hostOnly ? 1 : 0, Date.now());
+    stmt.run(id, name, hashRoomPassword(password), hostOnly ? 1 : 0, Date.now());
     return { id, name, hostOnly: !!hostOnly };
+  },
+
+  verifyRoomPassword(id, password) {
+    if (typeof password !== 'string' || password.length < 4 || password.length > 100) return false;
+    const room = db.prepare('SELECT password FROM rooms WHERE id = ?').get(id);
+    if (!room || !isRoomPasswordHash(room.password)) return false;
+
+    const [, salt, expectedHex] = room.password.split('$');
+    const actual = crypto.scryptSync(password, salt, 64);
+    const expected = Buffer.from(expectedHex, 'hex');
+    return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
   },
 
   deleteRoom(id) {
@@ -107,7 +141,7 @@ export const DB = {
       VALUES (?, ?, ?, ?, ?, ?)
     `);
     stmt.run(id, roomId, sender, text, isSystem ? 1 : 0, timestamp);
-    
+
     // Prune messages older than top 100 to keep chat performant
     db.exec(`
       DELETE FROM chat_messages 

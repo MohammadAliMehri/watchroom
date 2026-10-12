@@ -3,7 +3,7 @@
 # 🎬 WatchRoom v2
 ### *Synchronized Video Streaming with On-The-Fly MKV to HLS Conversion*
 
-[![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
@@ -30,8 +30,8 @@ Watch together in perfect synchronization. WatchRoom v2 adds native support for 
   - Embedded subtitle tracks are extracted automatically to WebVTT (`.vtt`) and mounted as native video tracks.
   - Multi-audio stream detection and track selection.
 - **Two-Layer SSRF & DNS Rebinding Protection**:
-  - **Layer 1 (Application)**: Rejects private, loopback, link-local, carrier NAT, and cloud metadata addresses (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `127/8`, `::1`).
-  - **Layer 2 (Kernel Firewall)**: Linux `iptables` egress guard blocks internal subnets for the service UID while preserving DNS resolution.
+  - **Layer 1 (Application)**: Rejects private, loopback, link-local, carrier NAT, and cloud metadata addresses.
+  - **Layer 2 (Kernel Firewall)**: Linux `iptables` egress guard blocks internal subnets for the service UID while preserving DNS resolution; production conversion fails closed unless this guard is enabled.
 - **Synchronized Playback Engine**:
   - Real-time room clock with sub-second drift detection.
   - Visual **Sync Pill**: Displays *"In sync"* (green dot) when within 1.5s, or *"Catching up…"* (amber dot) during correction.
@@ -98,7 +98,7 @@ Watch together in perfect synchronization. WatchRoom v2 adds native support for 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Node.js 20+** (Node.js 22 or 24 recommended)
+- **Node.js 22.13+** (Node.js 24 LTS recommended)
 - **FFmpeg & FFprobe** installed and accessible in system `PATH`
 
 ### 1. Installation
@@ -125,11 +125,13 @@ npm start
 ```
 The server will start on [http://localhost:3000](http://localhost:3000).
 
+For local testing of server-side conversion from remote URLs, explicitly opt in with `ALLOW_UNSAFE_MEDIA_FETCHES=true` (PowerShell: `$env:ALLOW_UNSAFE_MEDIA_FETCHES="true"`). This disables the production egress requirement and must not be used on a server exposed to untrusted users. The Linux installer configures the protected production path.
+
 ### 4. Run Test Suite
 ```bash
 npm test
 ```
-Executes automated tests validating SSRF security, SQLite persistence, and FFmpeg MKV-to-HLS conversion.
+Executes automated tests validating SSRF policy, SQLite persistence and password migration, room authorization, and FFmpeg MKV-to-HLS conversion. The test suite generates its media fixture in a temporary directory.
 
 ---
 

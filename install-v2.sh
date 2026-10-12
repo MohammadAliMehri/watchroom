@@ -22,10 +22,10 @@ echo "[1/6] Installing dependencies (ffmpeg, iptables, curl, nodejs)..."
 apt-get update -qq
 apt-get install -y -qq ffmpeg iptables curl ufw
 
-# Ensure Node 20+ is present
-if ! command -v node >/dev/null 2>&1 || [[ $(node -v | cut -d'.' -f1 | tr -d 'v') -lt 20 ]]; then
-  echo "Installing Node.js LTS..."
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+# Ensure the declared Node.js minimum is present
+if ! command -v node >/dev/null 2>&1 || ! dpkg --compare-versions "$(node -v | sed 's/^v//')" ge "22.13.0"; then
+  echo "Installing Node.js 24 LTS..."
+  curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
   apt-get install -y -qq nodejs
 fi
 
@@ -41,8 +41,15 @@ chmod 750 "$MEDIA_DIR" "$DATA_DIR"
 echo "[3/6] Deploying application files..."
 # Copy current workspace files to /opt/watchroom if running from repo
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+systemctl stop watchroom.service 2>/dev/null || true
 if [[ "$SCRIPT_DIR" != "$APP_DIR" ]]; then
-  rsync -av --exclude 'node_modules' --exclude '.git' --exclude 'web/node_modules' "$SCRIPT_DIR/" "$APP_DIR/"
+  rsync -av --exclude 'node_modules' --exclude '.git' --exclude 'web/node_modules' --exclude '/data/' --exclude '/media/' "$SCRIPT_DIR/" "$APP_DIR/"
+fi
+
+# Migrate the database from the old in-app location without overwriting existing persistent data.
+if [[ -f "$APP_DIR/data/watchroom.db" && ! -f "$DATA_DIR/watchroom.db" ]]; then
+  echo "Migrating the existing room database to $DATA_DIR..."
+  install -o "$APP_USER" -g "$APP_USER" -m 640 "$APP_DIR/data/watchroom.db" "$DATA_DIR/watchroom.db"
 fi
 
 # Set permissions
@@ -50,17 +57,13 @@ chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
 
 # Install production dependencies
 cd "$APP_DIR"
-sudo -u "$APP_USER" npm install --production
+sudo -u "$APP_USER" npm ci --omit=dev
 
 # Build web frontend if web folder exists
 if [[ -d "$APP_DIR/web" ]]; then
   echo "Building frontend client..."
-  cd "$APP_DIR/web"
-  sudo -u "$APP_USER" npm install
-  sudo -u "$APP_USER" npm run build
-  mkdir -p "$APP_DIR/public"
-  cp -r "$APP_DIR/web/dist/"* "$APP_DIR/public/"
-  cd "$APP_DIR"
+  sudo -u "$APP_USER" npm ci --prefix web
+  sudo -u "$APP_USER" npm run build:web
 fi
 
 echo "[4/6] Installing egress guard firewall service..."
@@ -106,13 +109,11 @@ else
   echo " [WARN] Check 1: Server health check failed." >&2
 fi
 
-# Check 2: Egress guard blocks private addresses
-BLOCKED_EXIT=0
-sudo -u "$APP_USER" curl -m 3 http://10.0.0.1/ >/dev/null 2>&1 || BLOCKED_EXIT=$?
-if [[ "$BLOCKED_EXIT" -ne 0 ]]; then
-  echo " [PASS] Check 2: Egress guard successfully blocked private network (exit=$BLOCKED_EXIT)."
+# Check 2: Egress guard blocks a real local service canary
+if [[ "$HEALTH_STATUS" == '"ok"' ]] && ! sudo -u "$APP_USER" curl -fsS -m 3 http://127.0.0.1:3000/healthz >/dev/null 2>&1; then
+  echo " [PASS] Check 2: Egress guard blocked loopback access to the running server."
 else
-  echo " [WARN] Check 2: Egress guard did NOT block private IP 10.0.0.1!" >&2
+  echo " [WARN] Check 2: Could not verify that the egress guard blocks loopback access." >&2
 fi
 
 # Check 3: Public internet access works for app user

@@ -80,8 +80,8 @@ Serves HLS segments and playlists.
 | `room:join` | `{ roomId, password, userName }` | Joins a room, authenticates password, and subscribes socket to room updates. |
 | `room:leave` | *(None)* | Leaves the current room. |
 | `sync:control` | `{ action, currentTime, itemId }` | Sends a playback action: `'play'`, `'pause'`, `'seek'`, or `'changeItem'`. |
-| `media:prepare` | `{ url, audioTrackIndex? }` | Requests conversion of a video source to HLS. |
-| `playlist:add` | `{ url, title? }` | Adds a new video link to the room's playlist. |
+| `media:prepare` | `{ url, audioTrackIndex? }` | Requests conversion of a video source to HLS. In host-only rooms, only the host may request media preparation; the acknowledgement returns `{ success, error? }`. |
+| `playlist:add` | `{ url, title? }` | Adds a video link to the shared playlist. Guests in host-only rooms do not trigger a server-side metadata probe; duration is populated as `0` until media is prepared. |
 | `playlist:remove` | `{ itemId }` | Removes an item from the playlist. |
 | `playlist:select` | `{ itemId }` | Selects an item from the playlist for playback. |
 | `chat:send` | `{ text }` | Sends a chat message to the room. |

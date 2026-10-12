@@ -21,7 +21,6 @@ export class RoomManager {
       this.rooms.set(r.id, {
         id: r.id,
         name: r.name,
-        password: r.password,
         hostOnly: !!r.host_only,
         createdAt: r.created_at,
         hostSocketId: null,
@@ -90,7 +89,6 @@ export class RoomManager {
     const roomState = {
       id,
       name: name.trim(),
-      password,
       hostOnly: !!hostOnly,
       createdAt: Date.now(),
       hostSocketId: null,
@@ -120,8 +118,16 @@ export class RoomManager {
       throw new Error('Room not found');
     }
 
-    if (room.password && room.password !== password) {
+    if (!DB.verifyRoomPassword(roomId, password)) {
       throw new Error('Wrong password. Ask the room creator for the right one.');
+    }
+
+    if (socket.data.roomId === roomId && room.members.has(socket.id)) {
+      return room.members.get(socket.id);
+    }
+
+    if (socket.data.roomId) {
+      this.leaveRoom(socket);
     }
 
     const isFirstMember = room.members.size === 0;
@@ -182,11 +188,17 @@ export class RoomManager {
     if (!roomId) return;
 
     const room = this.rooms.get(roomId);
-    if (!room) return;
+    if (!room) {
+      socket.data.roomId = null;
+      socket.data.member = null;
+      socket.leave(roomId);
+      return;
+    }
 
     room.members.delete(socket.id);
     socket.leave(roomId);
     socket.data.roomId = null;
+    socket.data.member = null;
 
     // Elect new host if previous host left
     if (room.hostSocketId === socket.id) {
@@ -238,6 +250,12 @@ export class RoomManager {
     });
   }
 
+  canControl(socket, roomId) {
+    const room = this.rooms.get(roomId);
+    return !!socket && !!room && socket.data.roomId === roomId && room.members.has(socket.id) &&
+      (!room.hostOnly || socket.id === room.hostSocketId);
+  }
+
   handleControl(socket, { action, currentTime, itemId }) {
     const roomId = socket.data.roomId;
     if (!roomId) return;
@@ -245,7 +263,7 @@ export class RoomManager {
     if (!room) return;
 
     const member = socket.data.member;
-    if (room.hostOnly && socket.id !== room.hostSocketId) {
+    if (!this.canControl(socket, roomId)) {
       socket.emit('error:notice', { message: 'Only the host can control playback.' });
       return;
     }
@@ -284,7 +302,7 @@ export class RoomManager {
         room.playback.isPlaying = false;
         room.playback.updatedAt = Date.now();
         this.addSystemChat(roomId, `${userName} changed item to "${target.title}"`);
-        this.prepareRoomMedia(roomId, target.url);
+        this.prepareRoomMedia(roomId, target.url).catch(() => { });
       }
     }
 
@@ -292,9 +310,12 @@ export class RoomManager {
     this.broadcastRoomList();
   }
 
-  async prepareRoomMedia(roomId, url, audioTrackIndex = 0) {
+  async prepareRoomMedia(roomId, url, audioTrackIndex = 0, socket = null) {
     const room = this.rooms.get(roomId);
     if (!room) return;
+    if (socket && !this.canControl(socket, roomId)) {
+      throw new Error('Only the host can prepare media in this room.');
+    }
 
     room.playback.isPreparing = true;
     room.playback.prepareProgress = 0;
@@ -323,11 +344,13 @@ export class RoomManager {
       room.playback.prepareError = null;
 
       this.broadcastSyncState(roomId);
+      return { success: true };
     } catch (err) {
       room.playback.isPreparing = false;
       room.playback.prepareError = err.message;
       this.broadcastSyncState(roomId);
       this.io.to(roomId).emit('media:error', { message: err.message });
+      return { success: false, error: err.message };
     }
   }
 
@@ -365,24 +388,20 @@ export class RoomManager {
     this.io.to(roomId).emit('chat:message', msg);
   }
 
-  async addToPlaylist(roomId, { url, title }) {
+  async addToPlaylist(roomId, { url, title }, socket = null) {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
     // Validate URL
     await validateUrl(url);
 
-    // Auto-probe title and duration if needed
-    let cleanTitle = title?.trim();
+    let cleanTitle = title?.trim() || new URL(url).pathname.split('/').pop() || 'Video file';
     let duration = 0;
-    try {
-      const probe = await probeSource(url);
-      duration = probe.duration || 0;
-      if (!cleanTitle) {
-        cleanTitle = url.split('/').pop()?.split('?')[0] || 'Video file';
-      }
-    } catch {
-      if (!cleanTitle) cleanTitle = url.split('/').pop()?.split('?')[0] || 'Video file';
+    if (!room.hostOnly || !socket || this.canControl(socket, roomId)) {
+      try {
+        const probe = await probeSource(url);
+        duration = probe.duration || 0;
+      } catch { }
     }
 
     const playlist = DB.getPlaylist(roomId);
@@ -400,12 +419,14 @@ export class RoomManager {
     this.io.to(roomId).emit('playlist:updated', updated);
 
     // If room has no active item, auto-select this one
-    if (!room.playback.currentItem) {
+    if (!room.playback.currentItem && (!socket || this.canControl(socket, roomId))) {
       room.playback.currentItem = item;
       room.playback.currentTime = 0;
       room.playback.isPlaying = false;
-      this.prepareRoomMedia(roomId, item.url);
+      this.prepareRoomMedia(roomId, item.url).catch(() => { });
     }
+
+    return item;
   }
 
   removeFromPlaylist(roomId, itemId) {
