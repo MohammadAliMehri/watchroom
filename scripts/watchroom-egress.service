@@ -1,0 +1,12 @@
+[Unit]
+Description=WatchRoom v2 Egress Firewall Guard
+Before=watchroom.service
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/watchroom-egress.sh
+
+[Install]
+WantedBy=multi-user.target
