@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { ArrowLeft, Copy, Check, Shield } from 'lucide-react';
 import { AvatarStack } from './AvatarStack';
 import type { Member } from '../hooks/useRoom';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 interface RoomHeaderProps {
   roomId: string;
@@ -34,14 +36,16 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
     <header className="glass-panel rounded-xl px-4 py-3 flex items-center justify-between gap-4">
       <div className="flex items-center gap-3 min-w-0">
         {/* Leave Room Button */}
-        <button
+        <Button
           onClick={onLeave}
           aria-label="Leave room"
-          className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-medium"
+          variant="secondary"
+          size="sm"
+          className="bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white"
         >
           <ArrowLeft className="w-4 h-4" />
           <span className="hidden sm:inline">Leave</span>
-        </button>
+        </Button>
 
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="flex flex-col min-w-0">
@@ -55,21 +59,22 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
 
           {/* Live Badge (Section 12.2: bg-red-500 only for playing rooms) */}
           {isPlaying && (
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-red-400 text-[11px] font-semibold tracking-wider uppercase animate-pulse">
+            <Badge className="gap-1.5 border-red-500/40 bg-red-500/20 px-2 py-0.5 text-[11px] uppercase tracking-wider text-red-400 animate-pulse">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
               <span>Live</span>
-            </div>
+            </Badge>
           )}
 
           {/* Host Mode Badge */}
           {hostOnly && (
-            <div
+            <Badge
+              variant="outline"
               title={isHost ? 'You are the host' : 'Only the host can control playback'}
-              className="hidden md:flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-950/60 border border-violet-500/40 text-violet-300 text-[11px]"
+              className="hidden border-violet-500/40 bg-violet-950/60 px-2 py-0.5 text-[11px] text-violet-300 md:flex"
             >
               <Shield className="w-3 h-3 text-violet-400" />
               <span>Host controls</span>
-            </div>
+            </Badge>
           )}
         </div>
       </div>
@@ -79,14 +84,16 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
         <AvatarStack members={members} />
 
         {/* Share/Copy link button */}
-        <button
+        <Button
           onClick={copyRoomLink}
           aria-label="Copy room invite link"
-          className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/5 transition-colors flex items-center gap-1.5 text-xs"
+          variant="secondary"
+          size="sm"
+          className="border border-white/5 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white"
         >
           {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
           <span className="hidden sm:inline">{copied ? 'Copied' : 'Share'}</span>
-        </button>
+        </Button>
       </div>
     </header>
   );

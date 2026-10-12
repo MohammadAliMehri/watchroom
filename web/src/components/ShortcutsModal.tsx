@@ -1,5 +1,6 @@
 import React from 'react';
-import { X, Keyboard } from 'lucide-react';
+import { Keyboard } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface ShortcutsModalProps {
   isOpen: boolean;
@@ -22,34 +23,26 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose 
   ];
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="shortcuts-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div className="w-full max-w-md bg-[#14171f] border border-white/10 rounded-2xl p-6 shadow-2xl relative">
-        <button
-          onClick={onClose}
-          aria-label="Close shortcuts dialog"
-          className="absolute top-4 right-4 p-1 text-gray-400 hover:text-white rounded-lg transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        <div className="flex items-center gap-3 mb-5">
+      <DialogContent className="max-w-md">
+        <DialogHeader className="flex-row items-center gap-3 pr-8">
           <div className="w-10 h-10 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400">
             <Keyboard className="w-5 h-5" />
           </div>
           <div>
-            <h3 id="shortcuts-title" className="text-lg font-semibold text-white">
+            <DialogTitle id="shortcuts-title">
               Keyboard shortcuts
-            </h3>
-            <p className="text-xs text-gray-400">
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-xs">
               Desktop shortcuts for instant media control
-            </p>
+            </DialogDescription>
           </div>
-        </div>
+        </DialogHeader>
 
         <div className="flex flex-col gap-2">
           {shortcuts.map((s, idx) => (
@@ -70,7 +63,7 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose 
             Touch devices: Tap to show controls • Double-tap left/right half to seek 10 s
           </p>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };

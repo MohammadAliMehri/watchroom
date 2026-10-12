@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, MessageSquare } from 'lucide-react';
 import type { ChatMessage } from '../hooks/useRoom';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -36,7 +39,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   return (
-    <div className="glass-panel rounded-xl flex flex-col h-[520px] lg:h-[calc(100vh-140px)] sticky top-4">
+    <Card className="sticky top-4 flex h-[520px] flex-col lg:h-[calc(100vh-140px)]">
       {/* Header */}
       <div className="p-3.5 border-b border-white/10 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white flex items-center gap-2">
@@ -107,23 +110,24 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
       {/* Message Input Form */}
       <form onSubmit={handleSend} className="p-3 border-t border-white/10 flex gap-2">
-        <input
+        <Input
           type="text"
           placeholder="Send a message..."
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           aria-label="Chat message"
-          className="flex-1 px-3 py-2 bg-black/40 border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+          className="h-9 flex-1 rounded-lg border-white/10 px-3 py-2 placeholder:text-gray-500 focus-visible:border-violet-500 focus-visible:ring-violet-500"
         />
-        <button
+        <Button
           type="submit"
           disabled={!inputText.trim()}
           aria-label="Send message"
-          className="p-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white rounded-lg transition-colors flex items-center justify-center shadow-sm"
+          size="icon"
+          className="bg-violet-600 text-white hover:bg-violet-500"
         >
           <Send className="w-4 h-4" />
-        </button>
+        </Button>
       </form>
-    </div>
+    </Card>
   );
 };

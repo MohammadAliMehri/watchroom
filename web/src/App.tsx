@@ -7,6 +7,7 @@ import { RoomView } from './components/RoomView';
 import { CreateRoomDialog } from './components/CreateRoomDialog';
 import { JoinDialog } from './components/JoinDialog';
 import { ShortcutsModal } from './components/ShortcutsModal';
+import { Button } from '@/components/ui/button';
 
 export function App() {
   const roomHook = useRoom();
@@ -94,22 +95,25 @@ export function App() {
 
           <div className="flex items-center gap-2">
             {activeRoomId && currentView === 'home' && (
-              <button
+              <Button
                 onClick={() => setCurrentView('room')}
-                className="px-2.5 py-1 bg-[#1f2430] text-violet-300 rounded-lg text-xs font-medium flex items-center gap-1.5"
+                variant="secondary"
+                size="sm"
+                className="bg-[#1f2430] text-violet-300 hover:bg-[#262c3b]"
               >
                 <Radio className="w-3.5 h-3.5 text-red-400 animate-pulse" />
                 <span>Return</span>
-              </button>
+              </Button>
             )}
 
-            <button
+            <Button
               onClick={() => setIsCreateOpen(true)}
               aria-label="Create new room"
-              className="p-1.5 bg-violet-600 text-white rounded-lg text-xs font-medium"
+              size="icon"
+              className="bg-violet-600 text-white hover:bg-violet-500"
             >
               <Plus className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
         </header>
 

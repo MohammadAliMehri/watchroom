@@ -2,6 +2,14 @@ import React, { useState } from 'react';
 import { Plus, Search, Radio, Users, Film, Tv, Sparkles, Lock } from 'lucide-react';
 import type { RoomSummary, Stats } from '../hooks/useRoom';
 import { getGradientPoster } from '../utils/gradientPoster';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardDescription,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 
 interface HomeProps {
   rooms: RoomSummary[];
@@ -43,13 +51,14 @@ export const Home: React.FC<HomeProps> = ({
           </p>
 
           <div className="flex flex-wrap items-center gap-4">
-            <button
+            <Button
               onClick={onCreateRoom}
-              className="px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-violet-600/25 hover:shadow-violet-600/40 flex items-center gap-2"
+              size="lg"
+              className="bg-violet-600 text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500 hover:shadow-violet-600/40"
             >
               <Plus className="w-4 h-4" />
               <span>Create room</span>
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -60,7 +69,7 @@ export const Home: React.FC<HomeProps> = ({
 
       {/* Live Stats Row */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="glass-panel rounded-xl p-4 flex items-center gap-4">
+        <Card className="flex items-center gap-4 p-4">
           <div className="w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400">
             <Radio className="w-5 h-5 animate-pulse" />
           </div>
@@ -70,9 +79,9 @@ export const Home: React.FC<HomeProps> = ({
             </span>
             <p className="text-xs text-gray-400">Live streaming rooms</p>
           </div>
-        </div>
+        </Card>
 
-        <div className="glass-panel rounded-xl p-4 flex items-center gap-4">
+        <Card className="flex items-center gap-4 p-4">
           <div className="w-10 h-10 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400">
             <Users className="w-5 h-5" />
           </div>
@@ -82,9 +91,9 @@ export const Home: React.FC<HomeProps> = ({
             </span>
             <p className="text-xs text-gray-400">Active viewers</p>
           </div>
-        </div>
+        </Card>
 
-        <div className="glass-panel rounded-xl p-4 flex items-center gap-4">
+        <Card className="flex items-center gap-4 p-4">
           <div className="w-10 h-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
             <Tv className="w-5 h-5" />
           </div>
@@ -94,7 +103,7 @@ export const Home: React.FC<HomeProps> = ({
             </span>
             <p className="text-xs text-gray-400">Total rooms</p>
           </div>
-        </div>
+        </Card>
       </section>
 
       {/* Room Listing Header & Search */}
@@ -106,13 +115,13 @@ export const Home: React.FC<HomeProps> = ({
 
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-            <input
+            <Input
               type="text"
               placeholder="Search rooms..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               aria-label="Search rooms"
-              className="w-full pl-9 pr-3 py-2 bg-black/40 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+              className="h-10 w-full rounded-xl border-white/10 pl-9 pr-3 text-sm placeholder:text-gray-500 focus-visible:border-violet-500 focus-visible:ring-violet-500"
             />
           </div>
         </div>
@@ -122,9 +131,9 @@ export const Home: React.FC<HomeProps> = ({
           /* Skeletons while loading (Section 12.8) */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div
+              <Card
                 key={i}
-                className="glass-panel rounded-xl p-4 h-48 animate-pulse flex flex-col justify-between"
+                className="h-48 animate-pulse justify-between gap-4 p-4"
               >
                 <div className="flex items-center justify-between">
                   <div className="w-32 h-5 bg-white/10 rounded" />
@@ -135,31 +144,31 @@ export const Home: React.FC<HomeProps> = ({
                   <div className="w-20 h-4 bg-white/10 rounded" />
                   <div className="w-16 h-4 bg-white/10 rounded" />
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         ) : rooms.length === 0 ? (
           /* Empty state (Section 12.4) */
-          <div className="glass-panel rounded-2xl p-12 text-center flex flex-col items-center gap-4">
+          <Card className="flex flex-col items-center gap-4 rounded-2xl p-12 text-center">
             <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-gray-400">
               <Film className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white">
+              <CardTitle className="text-lg">
                 No rooms yet. Create the first one.
-              </h3>
-              <p className="text-sm text-gray-400 mt-1 max-w-sm">
+              </CardTitle>
+              <CardDescription className="mt-1 max-w-sm">
                 Get started by creating a private room and sharing the password with friends.
-              </p>
+              </CardDescription>
             </div>
-            <button
+            <Button
               onClick={onCreateRoom}
-              className="mt-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-violet-600/20 flex items-center gap-2"
+              className="mt-2 bg-violet-600 px-5 font-semibold text-white shadow-md shadow-violet-600/20 hover:bg-violet-500"
             >
               <Plus className="w-4 h-4" />
               <span>Create room</span>
-            </button>
-          </div>
+            </Button>
+          </Card>
         ) : filteredRooms.length === 0 ? (
           /* Search empty state (Section 12.4) */
           <div className="glass-panel rounded-2xl p-10 text-center flex flex-col items-center gap-2 text-gray-400">
@@ -172,19 +181,27 @@ export const Home: React.FC<HomeProps> = ({
             {filteredRooms.map((room) => {
               const poster = getGradientPoster(room.currentTitle || room.name);
               return (
-                <div
+                <Card
                   key={room.id}
                   onClick={() => onSelectRoom(room)}
-                  className="glass-panel rounded-xl overflow-hidden p-4 flex flex-col justify-between gap-4 cursor-pointer border border-white/10 transition-all duration-150 hover:border-violet-500/40 hover:shadow-xl hover:shadow-violet-950/20 hover:-translate-y-0.5 group"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelectRoom(room);
+                    }
+                  }}
+                  className="group flex cursor-pointer flex-col justify-between gap-4 overflow-hidden border-white/10 p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-violet-500/40 hover:shadow-xl hover:shadow-violet-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <h3 className="text-base font-semibold text-white group-hover:text-violet-300 transition-colors truncate">
                       {room.name}
                     </h3>
                     {room.isLive ? (
-                      <span className="shrink-0 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold tracking-wider uppercase">
+                      <Badge className="shrink-0 border-red-500 bg-red-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
                         Live
-                      </span>
+                      </Badge>
                     ) : (
                       <span className="shrink-0 flex items-center gap-1 text-[11px] text-gray-500">
                         <Lock className="w-3 h-3" />
@@ -214,8 +231,8 @@ export const Home: React.FC<HomeProps> = ({
                     <span className="text-violet-400 text-xs font-medium group-hover:underline">
                       Join room &rarr;
                     </span>
-                  </div>
                 </div>
+                </Card>
               );
             })}
           </div>

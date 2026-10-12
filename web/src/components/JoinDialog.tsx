@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Lock, Eye, EyeOff } from 'lucide-react';
+import { Lock, Eye, EyeOff } from 'lucide-react';
 import type { RoomSummary } from '../hooks/useRoom';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 
 interface JoinDialogProps {
   room: RoomSummary | null;
@@ -56,58 +59,52 @@ export const JoinDialog: React.FC<JoinDialogProps> = ({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="join-room-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div className="w-full max-w-sm bg-[#14171f] border border-white/10 rounded-2xl p-6 shadow-2xl relative">
-        <button
-          onClick={onClose}
-          aria-label="Close dialog"
-          className="absolute top-4 right-4 p-1 text-gray-400 hover:text-white rounded-lg transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        <div className="flex items-center gap-3 mb-5">
+      <DialogContent className="max-w-sm">
+        <DialogHeader className="flex-row items-center gap-3 pr-8">
           <div className="w-10 h-10 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400">
             <Lock className="w-5 h-5" />
           </div>
           <div className="min-w-0 pr-4">
-            <h3 id="join-room-title" className="text-lg font-semibold text-white truncate">
+            <DialogTitle id="join-room-title" className="truncate">
               Join {room.name}
-            </h3>
-            <p className="text-xs text-gray-400">
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-xs">
               Enter the room password to join.
-            </p>
+            </DialogDescription>
           </div>
-        </div>
+        </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {/* User Display Name */}
           <div>
-            <label className="block text-xs font-medium text-gray-300 mb-1.5">
+            <label htmlFor="join-room-name" className="mb-1.5 block text-xs font-medium text-gray-300">
               Your name (optional)
             </label>
-            <input
+            <Input
+              id="join-room-name"
               type="text"
               placeholder="e.g. Alex"
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-black/50 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+              className="h-11 rounded-xl border-white/10 bg-black/50 px-3.5 py-2.5 placeholder:text-gray-500 focus-visible:border-violet-500 focus-visible:ring-violet-500"
             />
           </div>
 
           {/* Password Field */}
           <div>
-            <label className="block text-xs font-medium text-gray-300 mb-1.5">
+            <label htmlFor="join-room-password" className="mb-1.5 block text-xs font-medium text-gray-300">
               Room password
             </label>
             <div className="relative">
-              <input
+              <Input
                 ref={passwordInputRef}
+                id="join-room-password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Enter password"
                 value={password}
@@ -115,44 +112,49 @@ export const JoinDialog: React.FC<JoinDialogProps> = ({
                   setPassword(e.target.value);
                   if (errorMessage) setErrorMessage(null);
                 }}
-                className="w-full px-3.5 py-2.5 pr-10 bg-black/50 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                aria-invalid={Boolean(errorMessage)}
+                aria-describedby={errorMessage ? 'join-room-password-error' : undefined}
+                className="h-11 rounded-xl border-white/10 bg-black/50 px-3.5 py-2.5 pr-10 placeholder:text-gray-500 focus-visible:border-violet-500 focus-visible:ring-violet-500"
               />
-              <button
+              <Button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 size-8 -translate-y-1/2 text-gray-400 hover:bg-transparent hover:text-white"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+              </Button>
             </div>
 
             {errorMessage && (
-              <p className="text-xs text-red-400 mt-1.5">
+              <p id="join-room-password-error" role="alert" className="mt-1.5 text-xs text-red-400">
                 {errorMessage}
               </p>
             )}
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2.5 mt-2">
-            <button
+          <DialogFooter className="mt-2 sm:justify-start">
+            <Button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-sm font-medium transition-colors"
+              variant="secondary"
+              className="flex-1 bg-white/5 text-gray-300 hover:bg-white/10"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={isSubmitting || !password}
-              className="flex-1 px-4 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white rounded-xl text-sm font-medium transition-colors shadow-lg shadow-violet-600/20"
+              className="flex-1 bg-violet-600 text-white shadow-lg shadow-violet-600/20 hover:bg-violet-500"
             >
               {isSubmitting ? 'Joining…' : 'Join room'}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };

@@ -17,6 +17,7 @@ import {
 import type { PlaybackState } from '../hooks/useRoom';
 import { getGradientPoster } from '../utils/gradientPoster';
 import { mapServerError } from '../utils/errorMap';
+import { Button } from '@/components/ui/button';
 
 interface PlayerProps {
   playback: PlaybackState;
@@ -464,13 +465,13 @@ export const Player: React.FC<PlayerProps> = ({
                 {(errorInfo || prepErrorInfo)?.nextStep}
               </p>
             )}
-            <button
+            <Button
               onClick={onRetry}
-              className="mt-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              className="mt-2 bg-violet-600 text-white hover:bg-violet-500"
             >
               <RotateCcw className="w-4 h-4" />
               Try again
-            </button>
+            </Button>
           </div>
         )}
 
@@ -486,17 +487,19 @@ export const Player: React.FC<PlayerProps> = ({
               {currentTitle}
             </h3>
             {playback.subtitles && (
-              <button
+              <Button
                 onClick={() => setSubtitlesEnabled(!subtitlesEnabled)}
                 aria-label={subtitlesEnabled ? 'Disable subtitles' : 'Enable subtitles'}
-                className={`p-1.5 rounded-lg border transition-colors ${
+                variant="ghost"
+                size="icon"
+                className={`border ${
                   subtitlesEnabled
                     ? 'bg-violet-600/80 border-violet-400 text-white'
-                    : 'bg-black/50 border-white/20 text-gray-400 hover:text-white'
+                    : 'bg-black/50 border-white/20 text-gray-400 hover:bg-black/70 hover:text-white'
                 }`}
               >
                 <SubtitlesIcon className="w-4 h-4" />
-              </button>
+              </Button>
             )}
           </div>
 
@@ -521,11 +524,13 @@ export const Player: React.FC<PlayerProps> = ({
             <div className="flex items-center justify-between text-white text-xs">
               <div className="flex items-center gap-3">
                 {/* Play / Pause or Spinner */}
-                <button
+                <Button
                   onClick={togglePlay}
                   disabled={!canControl || playback.isPreparing || !playback.mediaSrc}
                   aria-label={playback.isPlaying ? 'Pause video' : 'Play video'}
-                  className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center"
+                  variant="ghost"
+                  size="icon"
+                  className="size-10 rounded-lg bg-white/10 text-white hover:bg-white/20 hover:text-white"
                 >
                   {playback.isPreparing ? (
                     <Loader2 className="w-5 h-5 animate-spin text-violet-400" />
@@ -534,25 +539,29 @@ export const Player: React.FC<PlayerProps> = ({
                   ) : (
                     <Play className="w-5 h-5 fill-current ml-0.5" />
                   )}
-                </button>
+                </Button>
 
                 {/* 10s Rewind / FastForward */}
-                <button
+                <Button
                   onClick={() => handleSeekDelta(-10)}
                   disabled={!canControl || playback.isPreparing || !playback.mediaSrc}
                   aria-label="Rewind 10 seconds"
-                  className="p-1.5 text-gray-300 hover:text-white transition-colors"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-gray-300 hover:bg-transparent hover:text-white"
                 >
                   <RotateCcw className="w-4 h-4" />
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={() => handleSeekDelta(10)}
                   disabled={!canControl || playback.isPreparing || !playback.mediaSrc}
                   aria-label="Forward 10 seconds"
-                  className="p-1.5 text-gray-300 hover:text-white transition-colors"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-gray-300 hover:bg-transparent hover:text-white"
                 >
                   <RotateCw className="w-4 h-4" />
-                </button>
+                </Button>
 
                 {/* Time Display with tabular-nums */}
                 <div className="tabular-nums font-mono text-gray-300 select-none">
@@ -565,17 +574,19 @@ export const Player: React.FC<PlayerProps> = ({
               <div className="flex items-center gap-3">
                 {/* Volume slider (hidden on mobile, uses device volume) */}
                 <div className="hidden sm:flex items-center gap-2">
-                  <button
+                  <Button
                     onClick={toggleMute}
                     aria-label={isMuted ? 'Unmute' : 'Mute'}
-                    className="p-1.5 text-gray-300 hover:text-white transition-colors"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-gray-300 hover:bg-transparent hover:text-white"
                   >
                     {isMuted || volume === 0 ? (
                       <VolumeX className="w-4 h-4" />
                     ) : (
                       <Volume2 className="w-4 h-4" />
                     )}
-                  </button>
+                  </Button>
                   <input
                     type="range"
                     min="0"
@@ -589,17 +600,19 @@ export const Player: React.FC<PlayerProps> = ({
                 </div>
 
                 {/* Fullscreen Button */}
-                <button
+                <Button
                   onClick={toggleFullscreen}
                   aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-                  className="p-1.5 text-gray-300 hover:text-white transition-colors"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-gray-300 hover:bg-transparent hover:text-white"
                 >
                   {isFullscreen ? (
                     <Minimize className="w-4 h-4" />
                   ) : (
                     <Maximize className="w-4 h-4" />
                   )}
-                </button>
+                </Button>
               </div>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Film, Home as HomeIcon, Plus, Radio, HelpCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface SidebarProps {
   currentView: 'home' | 'room';
@@ -39,19 +40,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Primary Action Button */}
-        <button
+        <Button
           onClick={onCreateRoom}
-          className="w-full py-2.5 px-3 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-violet-600/20 flex items-center justify-center gap-2"
+          className="h-10 w-full bg-violet-600 px-3 text-xs font-semibold text-white shadow-md shadow-violet-600/20 hover:bg-violet-500"
         >
           <Plus className="w-4 h-4" />
           <span>New Room</span>
-        </button>
+        </Button>
 
         {/* Navigation items */}
         <nav className="flex flex-col gap-1.5" aria-label="Main Navigation">
-          <button
+          <Button
             onClick={onNavigateHome}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+            variant="ghost"
+            className={`h-auto w-full justify-start px-3 py-2 text-sm font-medium ${
               currentView === 'home'
                 ? 'bg-[#1f2430] text-white border border-white/5'
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -59,12 +61,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <HomeIcon className="w-4 h-4 text-violet-400" />
             <span>Home</span>
-          </button>
+          </Button>
 
           {activeRoomId && (
-            <button
+            <Button
               onClick={onNavigateRoom}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+              variant="ghost"
+              className={`h-auto w-full justify-between px-3 py-2 text-sm font-medium ${
                 currentView === 'room'
                   ? 'bg-[#1f2430] text-white border border-white/5'
                   : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -75,20 +78,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="truncate">{activeRoomName || 'Current Room'}</span>
               </div>
               <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-            </button>
+            </Button>
           )}
         </nav>
       </div>
 
       {/* Footer Info / Shortcuts */}
       <div className="flex flex-col gap-3 pt-4 border-t border-white/5 px-2">
-        <button
+        <Button
           onClick={onOpenHelp}
-          className="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition-colors"
+          variant="ghost"
+          className="h-auto justify-start px-0 text-xs text-gray-400 hover:bg-transparent hover:text-white"
         >
           <HelpCircle className="w-4 h-4" />
           <span>Keyboard shortcuts</span>
-        </button>
+        </Button>
 
         <div className="flex items-center justify-between text-[11px] text-gray-500">
           <span>WatchRoom v2</span>

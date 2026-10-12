@@ -1,6 +1,10 @@
 import React, { useState, forwardRef, useImperativeHandle, useRef } from 'react';
 import { Plus, Film, Trash2 } from 'lucide-react';
 import type { PlaylistItem } from '../hooks/useRoom';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 
 interface PlaylistPanelProps {
   playlist: PlaylistItem[];
@@ -64,7 +68,7 @@ export const PlaylistPanel = forwardRef<PlaylistPanelRef, PlaylistPanelProps>(({
   };
 
   return (
-    <div className="glass-panel rounded-xl p-4 flex flex-col gap-4">
+    <Card className="flex flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-base font-semibold text-white flex items-center gap-2">
           <Film className="w-4 h-4 text-violet-400" />
@@ -78,24 +82,25 @@ export const PlaylistPanel = forwardRef<PlaylistPanelRef, PlaylistPanelProps>(({
       {/* Add Movie Link Form */}
       <form onSubmit={handleAdd} className="flex flex-col gap-2">
         <div className="flex gap-2">
-          <input
+          <Input
             ref={inputRef}
             type="url"
             placeholder="Paste video link (MKV, MP4, WebM, AVI, TS...)"
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             disabled={isAdding}
-            className="flex-1 px-3 py-2 bg-black/40 border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+            className="h-9 flex-1 rounded-lg border-white/10 px-3 py-2 placeholder:text-gray-500 focus-visible:border-violet-500 focus-visible:ring-violet-500"
           />
-          <button
+          <Button
             type="submit"
             disabled={isAdding || !urlInput.trim()}
             aria-label="Add video to playlist"
-            className="px-3.5 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 shadow-sm"
+            size="sm"
+            className="h-9 bg-violet-600 text-white shadow-sm hover:bg-violet-500"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">Add</span>
-          </button>
+          </Button>
         </div>
 
         {errorMessage && (
@@ -115,10 +120,10 @@ export const PlaylistPanel = forwardRef<PlaylistPanelRef, PlaylistPanelProps>(({
           playlist.map((item, index) => {
             const isCurrent = item.id === currentItemId;
             return (
-              <div
+              <Card
                 key={item.id}
                 onClick={() => canControl && onSelectItem(item.id)}
-                className={`group flex items-center justify-between p-2.5 rounded-lg border transition-all cursor-pointer ${
+                className={`group flex items-center justify-between rounded-lg p-2.5 transition-all ${
                   isCurrent
                     ? 'bg-[#1f2430] border-violet-500/50 shadow-sm'
                     : 'bg-black/20 hover:bg-[#1f2430]/60 border-white/5'
@@ -134,9 +139,9 @@ export const PlaylistPanel = forwardRef<PlaylistPanelRef, PlaylistPanelProps>(({
                         {item.title}
                       </p>
                       {isCurrent && (
-                        <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-violet-500 text-white rounded uppercase tracking-wider">
+                        <Badge className="px-1.5 py-0.5 text-[10px] uppercase tracking-wider">
                           Now
-                        </span>
+                        </Badge>
                       )}
                     </div>
                     <span className="text-xs text-gray-400 truncate max-w-xs">
@@ -153,24 +158,26 @@ export const PlaylistPanel = forwardRef<PlaylistPanelRef, PlaylistPanelProps>(({
                   )}
 
                   {canControl && (
-                    <button
+                    <Button
                       onClick={(e) => {
                         e.stopPropagation();
                         onRemoveItem(item.id);
                       }}
                       aria-label="Remove item from playlist"
-                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-400 transition-opacity"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 opacity-0 group-hover:opacity-100 text-gray-400 hover:bg-transparent hover:text-red-400"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
                   )}
                 </div>
-              </div>
+              </Card>
             );
           })
         )}
       </div>
-    </div>
+    </Card>
   );
 });
 
