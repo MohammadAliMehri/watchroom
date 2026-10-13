@@ -9,7 +9,7 @@ interface JoinDialogProps {
   room: RoomSummary | null;
   isOpen: boolean;
   onClose: () => void;
-  onJoin: (roomId: string, password: string, userName: string) => Promise<{ success: boolean; error?: string }>;
+  onJoin: (roomId: string, password: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const JoinDialog: React.FC<JoinDialogProps> = ({
@@ -19,7 +19,6 @@ export const JoinDialog: React.FC<JoinDialogProps> = ({
   onJoin,
 }) => {
   const [password, setPassword] = useState('');
-  const [userName, setUserName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -43,12 +42,10 @@ export const JoinDialog: React.FC<JoinDialogProps> = ({
     setIsSubmitting(true);
 
     try {
-      const res = await onJoin(room.id, password, userName);
+      const res = await onJoin(room.id, password);
       if (res.success) {
         onClose();
       } else {
-        // Section 12.4 exact requirement:
-        // "Wrong password shows 'Wrong password. Ask the room creator for the right one.'"
         setErrorMessage(res.error || 'Wrong password. Ask the room creator for the right one.');
       }
     } catch (err: any) {
@@ -81,20 +78,6 @@ export const JoinDialog: React.FC<JoinDialogProps> = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {/* User Display Name */}
-          <div>
-            <label htmlFor="join-room-name" className="mb-1.5 block text-xs font-medium text-gray-300">
-              Your name (optional)
-            </label>
-            <Input
-              id="join-room-name"
-              type="text"
-              placeholder="e.g. Alex"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-              className="h-11 rounded-xl border-white/10 bg-black/50 px-3.5 py-2.5 placeholder:text-gray-500 focus-visible:border-violet-500 focus-visible:ring-violet-500"
-            />
-          </div>
 
           {/* Password Field */}
           <div>

@@ -17,8 +17,10 @@ export const RoomView: React.FC<RoomViewProps> = ({ roomHook, currentUserName })
   const {
     activeRoomId,
     roomName,
+    setRoomName,
     hostOnly,
     isHost,
+    isOwner,
     members,
     playlist,
     chatMessages,
@@ -64,8 +66,11 @@ export const RoomView: React.FC<RoomViewProps> = ({ roomHook, currentUserName })
         isPlaying={playback.isPlaying}
         hostOnly={hostOnly}
         isHost={isHost}
+        isOwner={isOwner}
         members={members}
         onLeave={leaveRoom}
+        onRoomRenamed={(newName) => setRoomName(newName)}
+        onRoomDeleted={leaveRoom}
       />
 
       {/* Main Responsive Grid:

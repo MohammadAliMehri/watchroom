@@ -165,19 +165,39 @@ Executes automated tests validating SSRF policy, SQLite persistence and password
 
 ---
 
+---
+
+## ⚙️ Configuration & Environment Variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | *(empty)* | PostgreSQL connection string (`postgres://` or `postgresql://`). Leave empty to use SQLite. |
+| `DB_PATH` | `/var/lib/watchroom/watchroom.db` | SQLite database file location. |
+| `ALLOWED_ORIGINS` | *(empty, same origin only)* | Comma-separated list of allowed origins for Socket.IO and CORS. |
+| `SESSION_DAYS` | `30` | Session cookie and token lifetime in days. |
+| `NODE_ENV` | `production` | Enables `Secure` cookies when requested over HTTPS. |
+| `PORT` | `3000` | HTTP port to listen on. |
+| `HOST` | `0.0.0.0` | Bind host address. |
+| `MEDIA_DIR` | `/var/lib/watchroom/media` | Storage directory for temporary HLS stream files. |
+
+---
+
 ## 📦 Production Deployment (Ubuntu / Debian)
 
-Deploy WatchRoom in production with a single script:
+Deploy WatchRoom in production with the installer script:
 
 ```bash
-# HTTP testing
-sudo bash install-v2.sh
+# HTTP installation (SQLite by default)
+sudo bash install-v3.sh
 
 # HTTPS with automatic Caddy TLS certificate
-sudo DOMAIN=watch.example.com bash install-v2.sh
+sudo DOMAIN=watch.example.com bash install-v3.sh
+
+# PostgreSQL support
+sudo DATABASE_URL=postgres://user:pass@localhost:5432/watchroom bash install-v3.sh
 ```
 
-This installs system dependencies, creates system user `watchroom`, sets up the media storage directory at `/var/lib/watchroom/media`, configures `watchroom-egress.service` and `watchroom.service`, and verifies server health.
+This installs system dependencies, creates system user `watchroom`, sets up the database directory at `/var/lib/watchroom`, configures daily automated backups (`/var/backups/watchroom` retaining 14 days), configures `watchroom-egress.service` and `watchroom.service`, and verifies server health.
 
 ---
 

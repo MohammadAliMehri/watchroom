@@ -7,29 +7,84 @@ import cors from 'cors';
 import { Server } from 'socket.io';
 import { RoomManager } from './src/roomManager.js';
 import { MEDIA_DIR, wipeMediaDir } from './src/converter.js';
+import { initDb, getDb } from './db/index.js';
+import { getRepo } from './db/repo.js';
+import { attachUser, parseCookies, hashToken, COOKIE_NAME } from './lib/auth.js';
+import authRoutes from './routes/auth.js';
+import accountRoutes from './routes/account.js';
+import roomsRoutes from './routes/rooms.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Initialize database and run migrations
+await initDb();
+
 const app = express();
 const server = http.createServer(app);
+
+// Origin validation helper for Socket.IO and CORS
+function getAllowedOrigins() {
+  const envOrigins = process.env.ALLOWED_ORIGINS;
+  if (!envOrigins) return null; // Default: same origin / all if empty
+  return envOrigins.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+const allowedOrigins = getAllowedOrigins();
+
 const io = new Server(server, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
+    origin: (origin, callback) => {
+      if (!origin || !allowedOrigins || allowedOrigins.length === 0) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('Origin not allowed'));
+    },
+    credentials: true
   }
 });
 
 // Clean media directory on start as required in section 3 & 4
 wipeMediaDir();
 
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || !allowedOrigins || allowedOrigins.length === 0) {
+      return callback(null, true);
+    }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Origin not allowed'));
+  },
+  credentials: true
+}));
 
-// Healthcheck endpoint (Section 6 & 7)
-app.get('/healthz', (req, res) => {
-  res.json({ status: 'ok', service: 'watchroom-v2' });
+app.use(express.json());
+app.use(attachUser);
+
+// Healthcheck endpoint (Section 5 & 12): check SELECT 1 against database
+app.get('/healthz', async (req, res) => {
+  try {
+    const db = await getDb();
+    await db.get('SELECT 1');
+    res.json({ status: 'ok', service: 'watchroom-v3', db: 'connected' });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
+  }
 });
+
+// Mount REST routes
+app.use('/api/auth', authRoutes);
+app.use('/api/account', accountRoutes);
+app.use('/api/rooms', roomsRoutes);
+
+// Room Manager instance
+const roomManager = new RoomManager(io);
+app.set('roomManager', roomManager);
 
 // Serve HLS media segments and playlists
 app.use('/media', (req, res, next) => {
@@ -46,53 +101,79 @@ app.use('/media', (req, res, next) => {
   next();
 }, express.static(MEDIA_DIR));
 
-// Room Manager instance
-const roomManager = new RoomManager(io);
-
-// REST API
+// Legacy stats route for backwards compatibility
 app.get('/api/stats', (req, res) => {
   res.json(roomManager.getStats());
 });
 
-app.get('/api/rooms', (req, res) => {
-  res.json(roomManager.getPublicRoomList());
-});
+// Socket.IO authentication middleware (Section 5.5)
+io.use(async (socket, next) => {
+  // Origin check if configured
+  const handshakeOrigin = socket.handshake.headers.origin;
+  if (allowedOrigins && allowedOrigins.length > 0 && handshakeOrigin) {
+    if (!allowedOrigins.includes(handshakeOrigin)) {
+      return next(new Error('Origin not allowed'));
+    }
+  }
 
-app.post('/api/rooms', (req, res) => {
   try {
-    const { name, password, hostOnly } = req.body;
-    const room = roomManager.createRoom({ name, password, hostOnly });
-    res.status(201).json({ id: room.id, name: room.name });
+    const cookieHeader = socket.handshake.headers.cookie;
+    const cookies = parseCookies(cookieHeader);
+    const token = cookies[COOKIE_NAME];
+
+    if (token) {
+      const tokenHash = hashToken(token);
+      const repo = await getRepo();
+      const sessionResult = await repo.getSessionUser(tokenHash);
+      if (sessionResult) {
+        socket.data.user = sessionResult.user;
+        socket.data.session = sessionResult.session;
+      } else {
+        socket.data.user = null;
+      }
+    } else {
+      socket.data.user = null;
+    }
+    next();
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    socket.data.user = null;
+    next();
   }
 });
 
 // Socket.IO event wiring
 io.on('connection', socket => {
-  // Client requests initial list of rooms
-  socket.on('rooms:list', () => {
+  socket.on('rooms:list', async () => {
+    const rooms = await roomManager.getPublicRoomList();
     socket.emit('rooms:list', {
-      rooms: roomManager.getPublicRoomList(),
+      rooms,
       stats: roomManager.getStats()
     });
   });
 
-  socket.on('room:create', (data, callback) => {
+  socket.on('room:create', async (data, callback) => {
     try {
-      const room = roomManager.createRoom(data);
-      if (typeof callback === 'function') callback({ success: true, room: { id: room.id, name: room.name } });
+      if (!socket.data.user) {
+        if (typeof callback === 'function') callback({ ok: false, error: 'Sign in required' });
+        return;
+      }
+      const ack = await roomManager.createRoom(data, socket.data.user);
+      if (typeof callback === 'function') callback(ack);
     } catch (err) {
-      if (typeof callback === 'function') callback({ success: false, error: err.message });
+      if (typeof callback === 'function') callback({ ok: false, error: err.message });
     }
   });
 
-  socket.on('room:join', (data, callback) => {
+  socket.on('room:join', async (data, callback) => {
     try {
-      const member = roomManager.joinRoom(socket, data);
-      if (typeof callback === 'function') callback({ success: true, member });
+      if (!socket.data.user) {
+        if (typeof callback === 'function') callback({ ok: false, error: 'Sign in required' });
+        return;
+      }
+      const ack = await roomManager.joinRoom(socket, data);
+      if (typeof callback === 'function') callback(ack);
     } catch (err) {
-      if (typeof callback === 'function') callback({ success: false, error: err.message });
+      if (typeof callback === 'function') callback({ ok: false, error: err.message });
     }
   });
 
@@ -129,7 +210,7 @@ io.on('connection', socket => {
   socket.on('playlist:remove', (data) => {
     const roomId = socket.data.roomId;
     if (!roomId) return;
-    roomManager.removeFromPlaylist(roomId, data.itemId);
+    roomManager.removeFromPlaylist(roomId, data.itemId, socket);
   });
 
   socket.on('playlist:select', (data) => {
@@ -161,6 +242,7 @@ if (fs.existsSync(frontendDir)) {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`WatchRoom v2 server listening on http://localhost:${PORT}`);
-  console.log(`Media directory: ${MEDIA_DIR}`);
+  console.log(`WatchRoom v3 server listening on http://localhost:${PORT}`);
 });
+
+export { app, server, io };
