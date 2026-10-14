@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Film, Plus, Radio, ShieldAlert, LogOut, User as UserIcon, List } from 'lucide-react';
+import { Film, Plus, Radio, ShieldAlert, LogOut, User as UserIcon, List, KeyRound } from 'lucide-react';
 import { useRoom, type RoomSummary } from './hooks/useRoom';
 import { useAuth } from './hooks/useAuth';
 import { Home } from './components/Home';
@@ -10,6 +10,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { SignupScreen } from './components/SignupScreen';
 import { CreateRoomDialog } from './components/CreateRoomDialog';
 import { JoinDialog } from './components/JoinDialog';
+import { JoinByIdDialog } from './components/JoinByIdDialog';
 import { ShortcutsModal } from './components/ShortcutsModal';
 import { Button } from '@/components/ui/button';
 
@@ -31,6 +32,7 @@ export function App() {
   const [currentView, setCurrentView] = useState<'home' | 'rooms' | 'room' | 'account' | 'login' | 'signup'>('rooms');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isJoinOpen, setIsJoinOpen] = useState(false);
+  const [isJoinIdOpen, setIsJoinIdOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<RoomSummary | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
 
@@ -127,6 +129,15 @@ export function App() {
           >
             <Plus className="w-4 h-4" />
             <span>New Room</span>
+          </Button>
+
+          <Button
+            onClick={() => setIsJoinIdOpen(true)}
+            variant="secondary"
+            className="h-10 w-full bg-white/5 px-3 text-xs font-semibold text-gray-200 hover:bg-white/10"
+          >
+            <KeyRound className="w-4 h-4 text-violet-400" />
+            <span>Join by ID</span>
           </Button>
 
           {/* Navigation items */}
@@ -234,6 +245,16 @@ export function App() {
             )}
 
             <Button
+              onClick={() => setIsJoinIdOpen(true)}
+              aria-label="Join room by ID"
+              variant="secondary"
+              size="icon"
+              className="bg-[#1f2430] text-violet-300 hover:bg-[#262c3b]"
+            >
+              <KeyRound className="w-4 h-4" />
+            </Button>
+
+            <Button
               onClick={() => setIsCreateOpen(true)}
               aria-label="Create new room"
               size="icon"
@@ -290,6 +311,12 @@ export function App() {
           setIsJoinOpen(false);
           setSelectedRoom(null);
         }}
+        onJoin={handleJoinSubmit}
+      />
+
+      <JoinByIdDialog
+        isOpen={isJoinIdOpen}
+        onClose={() => setIsJoinIdOpen(false)}
         onJoin={handleJoinSubmit}
       />
 

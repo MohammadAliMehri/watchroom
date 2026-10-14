@@ -40,8 +40,8 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const copyRoomLink = () => {
-    navigator.clipboard.writeText(window.location.href);
+  const copyRoomId = () => {
+    navigator.clipboard.writeText(roomId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -144,10 +144,10 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           {/* Active Viewers Stack */}
           <AvatarStack members={members} />
 
-          {/* Share/Copy link button */}
+          {/* Copy room ID button */}
           <Button
-            onClick={copyRoomLink}
-            aria-label="Copy room invite link"
+            onClick={copyRoomId}
+            aria-label="Copy room ID"
             variant="secondary"
             size="sm"
             className="border border-white/5 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white"
