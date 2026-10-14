@@ -145,11 +145,10 @@ export function App() {
             <Button
               onClick={() => setCurrentView('rooms')}
               variant="ghost"
-              className={`h-auto w-full justify-start px-3 py-2 text-sm font-medium ${
-                currentView === 'rooms'
+              className={`h-auto w-full justify-start px-3 py-2 text-sm font-medium ${currentView === 'rooms'
                   ? 'bg-[#1f2430] text-white border border-white/5'
                   : 'text-gray-400 hover:text-white hover:bg-white/5'
-              }`}
+                }`}
             >
               <List className="w-4 h-4 text-violet-400" />
               <span>My Rooms</span>
@@ -159,11 +158,10 @@ export function App() {
               <Button
                 onClick={() => setCurrentView('room')}
                 variant="ghost"
-                className={`h-auto w-full justify-between px-3 py-2 text-sm font-medium ${
-                  currentView === 'room'
+                className={`h-auto w-full justify-between px-3 py-2 text-sm font-medium ${currentView === 'room'
                     ? 'bg-[#1f2430] text-white border border-white/5'
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3 min-w-0 pr-2">
                   <Radio className="w-4 h-4 text-red-400 shrink-0 animate-pulse" />
@@ -176,11 +174,10 @@ export function App() {
             <Button
               onClick={() => setCurrentView('account')}
               variant="ghost"
-              className={`h-auto w-full justify-start px-3 py-2 text-sm font-medium ${
-                currentView === 'account'
+              className={`h-auto w-full justify-start px-3 py-2 text-sm font-medium ${currentView === 'account'
                   ? 'bg-[#1f2430] text-white border border-white/5'
                   : 'text-gray-400 hover:text-white hover:bg-white/5'
-              }`}
+                }`}
             >
               <UserIcon className="w-4 h-4 text-violet-400" />
               <span>Account</span>
