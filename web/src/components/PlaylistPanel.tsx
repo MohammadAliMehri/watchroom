@@ -123,11 +123,10 @@ export const PlaylistPanel = forwardRef<PlaylistPanelRef, PlaylistPanelProps>(({
               <Card
                 key={item.id}
                 onClick={() => canControl && onSelectItem(item.id)}
-                className={`group flex items-center justify-between rounded-lg p-2.5 transition-all ${
-                  isCurrent
+                className={`group flex items-center justify-between rounded-lg p-2.5 transition-all ${isCurrent
                     ? 'bg-[#1f2430] border-violet-500/50 shadow-sm'
                     : 'bg-black/20 hover:bg-[#1f2430]/60 border-white/5'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3 min-w-0 pr-2">
                   <span className="text-xs text-gray-500 font-mono w-4 text-center">
@@ -151,9 +150,9 @@ export const PlaylistPanel = forwardRef<PlaylistPanelRef, PlaylistPanelProps>(({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {item.duration > 0 && (
+                  {(item.durationSec ?? 0) > 0 && (
                     <span className="text-xs font-mono text-gray-400 tabular-nums">
-                      {formatDuration(item.duration)}
+                      {formatDuration(item.durationSec ?? 0)}
                     </span>
                   )}
 

@@ -88,6 +88,8 @@ router.delete('/', async (req, res) => {
     }
 
     await repo.deleteUser(req.user.id);
+    // DB rooms cascade-delete with the user; drop them from memory too.
+    await req.app.get('roomManager')?.removeRoomsOwnedBy(req.user.id);
     clearSessionCookie(res);
     return res.status(204).end();
   } catch (err) {

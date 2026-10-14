@@ -146,6 +146,20 @@ export const Player: React.FC<PlayerProps> = ({
     };
   }, [playback.mediaSrc, playback.mediaType]);
 
+  // Drive subtitle visibility through the text track mode; <track default> is unreliable once the element is added dynamically.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const apply = () => {
+      for (const track of Array.from(video.textTracks)) {
+        track.mode = subtitlesEnabled ? 'showing' : 'hidden';
+      }
+    };
+    apply();
+    video.textTracks.addEventListener('addtrack', apply);
+    return () => video.textTracks.removeEventListener('addtrack', apply);
+  }, [playback.subtitles, subtitlesEnabled]);
+
   // Sync engine: synchronizes playback state with room clock
   useEffect(() => {
     const video = videoRef.current;
@@ -388,13 +402,12 @@ export const Player: React.FC<PlayerProps> = ({
           playsInline
           className={`w-full h-full object-contain ${!playback.mediaSrc || playback.isPreparing ? 'hidden' : 'block'}`}
         >
-          {playback.subtitles && subtitlesEnabled && (
+          {playback.subtitles && (
             <track
+              key={playback.subtitles}
               kind="subtitles"
               src={playback.subtitles}
-              srcLang="en"
-              label="English"
-              default
+              label="Subtitles"
             />
           )}
         </video>
@@ -477,9 +490,8 @@ export const Player: React.FC<PlayerProps> = ({
 
         {/* Video Overlay Controls */}
         <div
-          className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 flex flex-col justify-between p-4 transition-opacity duration-200 ${
-            controlsVisible || !playback.isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
+          className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 flex flex-col justify-between p-4 transition-opacity duration-200 ${controlsVisible || !playback.isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}
         >
           {/* Top Bar: Title & Subtitle toggle */}
           <div className="flex items-center justify-between text-white">
@@ -492,11 +504,10 @@ export const Player: React.FC<PlayerProps> = ({
                 aria-label={subtitlesEnabled ? 'Disable subtitles' : 'Enable subtitles'}
                 variant="ghost"
                 size="icon"
-                className={`border ${
-                  subtitlesEnabled
+                className={`border ${subtitlesEnabled
                     ? 'bg-violet-600/80 border-violet-400 text-white'
                     : 'bg-black/50 border-white/20 text-gray-400 hover:bg-black/70 hover:text-white'
-                }`}
+                  }`}
               >
                 <SubtitlesIcon className="w-4 h-4" />
               </Button>
@@ -624,16 +635,14 @@ export const Player: React.FC<PlayerProps> = ({
         {/* Sync Status Pill */}
         <div className="flex items-center gap-2">
           <div
-            className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium transition-colors ${
-              inSync
+            className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium transition-colors ${inSync
                 ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
                 : 'bg-amber-950/60 border-amber-500/30 text-amber-300'
-            }`}
+              }`}
           >
             <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                inSync ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-ping'
-              }`}
+              className={`w-1.5 h-1.5 rounded-full ${inSync ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-ping'
+                }`}
             />
             <span>{inSync ? 'In sync' : 'Catching up…'}</span>
           </div>

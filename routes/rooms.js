@@ -42,6 +42,7 @@ router.patch('/:id', async (req, res) => {
     }
 
     const updated = await repo.updateRoom(id, { name: nameRes.value });
+    req.app.get('roomManager')?.renameRoom(id, updated.name);
     return res.status(200).json({
       room: {
         id: updated.id,
@@ -72,11 +73,7 @@ router.delete('/:id', async (req, res) => {
 
     await repo.deleteRoom(id);
 
-    // If app has roomManager mounted on req.app, remove memory cache as well
-    const roomManager = req.app.get('roomManager');
-    if (roomManager && roomManager.rooms) {
-      roomManager.rooms.delete(id);
-    }
+    await req.app.get('roomManager')?.removeRoom(id);
 
     return res.status(204).end();
   } catch (err) {

@@ -19,7 +19,6 @@ web/dist/
 test.mkv
 *.mp4
 *.webm
-*.ts
 *.m3u8
 
 # Environment & logs

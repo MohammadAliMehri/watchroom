@@ -305,11 +305,44 @@ test('Rooms and Chat persistence and socket behaviors', async (t) => {
     // Check room deleted from database
     const roomInDb = await repo.getRoom(createdRoomId);
     assert.equal(roomInDb, null);
+    assert.equal(roomManager.rooms.has(createdRoomId), false);
+  });
+
+  await t.test('Deleting a room evicts members and notifies them', async () => {
+    const ownerSocket = connectSocket(`${COOKIE_NAME}=${ownerToken}`);
+    await new Promise(r => ownerSocket.on('connect', r));
+    const created = await new Promise(resolve => {
+      ownerSocket.emit('room:create', { name: 'Doomed Room' }, resolve);
+    });
+    await new Promise(resolve => ownerSocket.emit('room:join', { roomId: created.roomId }, resolve));
+
+    const closed = new Promise(resolve => ownerSocket.once('room:closed', resolve));
+    const res = await fetch(`http://127.0.0.1:${port}/api/rooms/${created.roomId}`, {
+      method: 'DELETE',
+      headers: { Cookie: `${COOKIE_NAME}=${ownerToken}` }
+    });
+    assert.equal(res.status, 204);
+    assert.deepEqual(await closed, { roomId: created.roomId });
+    assert.equal(roomManager.rooms.has(created.roomId), false);
+    ownerSocket.disconnect();
+  });
+
+  await t.test('removeRoomsOwnedBy drops a deleted account\'s rooms from memory', async () => {
+    const ownerSocket = connectSocket(`${COOKIE_NAME}=${ownerToken}`);
+    await new Promise(r => ownerSocket.on('connect', r));
+    const a = await new Promise(resolve => ownerSocket.emit('room:create', { name: 'Ghost A' }, resolve));
+    const b = await new Promise(resolve => ownerSocket.emit('room:create', { name: 'Ghost B' }, resolve));
+    assert.ok(roomManager.rooms.has(a.roomId) && roomManager.rooms.has(b.roomId));
+
+    await roomManager.removeRoomsOwnedBy(owner.id);
+    assert.equal(roomManager.rooms.has(a.roomId), false);
+    assert.equal(roomManager.rooms.has(b.roomId), false);
+    ownerSocket.disconnect();
   });
 
   server.close();
   await driver.close();
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  } catch (e) {}
+  } catch (e) { }
 });

@@ -310,6 +310,43 @@ export class RoomManager {
     return ack;
   }
 
+  async removeRoom(roomId) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    this.rooms.delete(roomId);
+
+    const timer = this.playbackDebounceTimers.get(roomId);
+    if (timer) {
+      clearTimeout(timer);
+      this.playbackDebounceTimers.delete(roomId);
+    }
+    if (room.playback.mediaKey) {
+      scheduleJobCleanup(room.playback.mediaKey);
+    }
+
+    this.io.to(roomId).emit('room:closed', { roomId });
+    const sockets = await this.io.in(roomId).fetchSockets();
+    for (const s of sockets) {
+      s.data.roomId = null;
+      s.leave(roomId);
+    }
+    this.broadcastRoomList();
+  }
+
+  async removeRoomsOwnedBy(userId) {
+    const owned = [...this.rooms.values()].filter(r => r.ownerId === userId);
+    for (const room of owned) {
+      await this.removeRoom(room.id);
+    }
+  }
+
+  renameRoom(roomId, name) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    room.name = name;
+    this.broadcastRoomList();
+  }
+
   leaveRoom(socket) {
     const roomId = socket.data.roomId;
     if (!roomId) return;
@@ -428,7 +465,7 @@ export class RoomManager {
         room.playback.isPlaying = false;
         room.playback.updatedAt = Date.now();
         await this.savePlaybackImmediate(roomId);
-        this.prepareRoomMedia(roomId, target.url).catch(() => {});
+        this.prepareRoomMedia(roomId, target.url).catch(() => { });
       }
     }
 
@@ -532,7 +569,7 @@ export class RoomManager {
     try {
       const probe = await probeSource(url);
       duration = probe.duration || 0;
-    } catch {}
+    } catch { }
 
     const playlist = await repo.listItems(roomId);
     const id = crypto.randomUUID();
@@ -556,7 +593,7 @@ export class RoomManager {
       room.playback.currentTime = 0;
       room.playback.isPlaying = false;
       await this.savePlaybackImmediate(roomId);
-      this.prepareRoomMedia(roomId, item.url).catch(() => {});
+      this.prepareRoomMedia(roomId, item.url).catch(() => { });
     }
 
     return item;

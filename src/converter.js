@@ -181,7 +181,15 @@ function releaseReencode(job) {
   job.isReencoding = false;
 }
 
-function convertToHls(job, probeInfo, audioTrackIndex) {
+// Bitmap subtitle codecs (PGS, DVD) cannot be converted to WebVTT.
+const TEXT_SUBTITLE_CODECS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text']);
+
+function pickSubtitleStream(probeInfo) {
+  const textStreams = probeInfo.subtitleStreams.filter(s => TEXT_SUBTITLE_CODECS.has((s.codec || '').toLowerCase()));
+  return textStreams.find(s => s.language.toLowerCase().includes('en')) || textStreams[0] || null;
+}
+
+function convertToHls(job, probeInfo, audioTrackIndex, subtitleStream, vttFile) {
   return new Promise((resolve, reject) => {
     const ffmpegArgs = [
       '-y',
@@ -206,6 +214,11 @@ function convertToHls(job, probeInfo, audioTrackIndex) {
       '-progress', 'pipe:1',
       path.join(job.outDir, 'index.m3u8')
     );
+
+    // Second output of the same run: one full read of the source yields both HLS and subtitles.
+    if (subtitleStream) {
+      ffmpegArgs.push('-map', `0:s:${subtitleStream.index}`, '-c:s', 'webvtt', '-f', 'webvtt', vttFile);
+    }
 
     const proc = spawn('ffmpeg', ffmpegArgs);
     const durationUs = (probeInfo.duration || 1) * 1000000;
@@ -304,15 +317,11 @@ export async function prepareMedia(url, audioTrackIndex = 0, onProgress = null) 
     }
 
     fs.mkdirSync(outDir, { recursive: true });
-    await convertToHls(job, probeInfo, audioTrackIndex);
+    const subtitleStream = pickSubtitleStream(probeInfo);
+    await convertToHls(job, probeInfo, audioTrackIndex, subtitleStream, vttFile);
     releaseReencode(job);
 
-    let hasSubtitles = false;
-    if (probeInfo.subtitleStreams.length > 0) {
-      const englishSubtitle = probeInfo.subtitleStreams.find(stream =>
-        stream.language.toLowerCase().includes('en')) || probeInfo.subtitleStreams[0];
-      hasSubtitles = await extractSubtitles(url, englishSubtitle.index, vttFile) && fs.existsSync(vttFile);
-    }
+    const hasSubtitles = !!subtitleStream && fs.existsSync(vttFile) && fs.statSync(vttFile).size > 0;
 
     for (const listener of job.listeners) {
       try { listener({ key, progress: 100, status: 'ready' }); } catch { }
@@ -331,39 +340,6 @@ export async function prepareMedia(url, audioTrackIndex = 0, onProgress = null) 
   });
 
   return job.promise;
-}
-
-/**
- * Subtitle extractor (Section 10 Prompt A)
- */
-function extractSubtitles(sourceUrl, subIndex, destFile) {
-  return new Promise((resolve) => {
-    const subProc = spawn('ffmpeg', [
-      '-y',
-      '-protocol_whitelist', getInputProtocolWhitelist(sourceUrl),
-      '-i', sourceUrl,
-      '-map', `0:s:${subIndex}`,
-      '-f', 'webvtt',
-      destFile
-    ]);
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      subProc.kill();
-    }, LIMITS.probeTimeoutMs);
-
-    subProc.on('close', code => {
-      clearTimeout(timeout);
-      resolve(code === 0 && !timedOut);
-    });
-
-    subProc.on('error', () => {
-      clearTimeout(timeout);
-      resolve(false);
-    });
-    subProc.stdout.on('data', () => { });
-    subProc.stderr.on('data', () => { });
-  });
 }
 
 /**
