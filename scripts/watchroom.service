@@ -1,5 +1,5 @@
 [Unit]
-Description=WatchRoom v2 Media Sync Server
+Description=WatchRoom Media Sync Server
 After=network.target watchroom-egress.service
 Requires=watchroom-egress.service
 
@@ -11,8 +11,9 @@ WorkingDirectory=/opt/watchroom
 Environment=NODE_ENV=production
 Environment=PORT=3000
 Environment=MEDIA_DIR=/var/lib/watchroom/media
-Environment=DATA_DIR=/var/lib/watchroom/data
+Environment=DB_PATH=/var/lib/watchroom/watchroom.db
 Environment=MEDIA_EGRESS_PROTECTED=true
+EnvironmentFile=-/etc/watchroom/watchroom.env
 MemoryMax=1G
 ExecStart=/usr/bin/node server.js
 Restart=always

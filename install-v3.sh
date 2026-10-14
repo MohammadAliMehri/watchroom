@@ -10,8 +10,9 @@ echo "=========================================="
 APP_DIR="/opt/watchroom"
 STATE_DIR="/var/lib/watchroom"
 MEDIA_DIR="$STATE_DIR/media"
-DATA_DIR="$STATE_DIR"
 DB_PATH="$STATE_DIR/watchroom.db"
+ENV_DIR="/etc/watchroom"
+ENV_FILE="$ENV_DIR/watchroom.env"
 APP_USER="watchroom"
 DOMAIN="${DOMAIN:-}"
 DATABASE_URL="${DATABASE_URL:-}"
@@ -21,9 +22,12 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-echo "[1/6] Installing dependencies (ffmpeg, iptables, curl, sqlite3, nodejs)..."
+echo "[1/6] Installing dependencies (ffmpeg, iptables, curl, rsync, sqlite3, nodejs)..."
 apt-get update -qq
-apt-get install -y -qq ffmpeg iptables curl ufw sqlite3
+apt-get install -y -qq ffmpeg iptables curl ufw sqlite3 rsync ca-certificates gnupg
+if [[ -n "$DATABASE_URL" ]]; then
+  apt-get install -y -qq postgresql-client
+fi
 
 # Ensure Node.js >= 22.13.0 is present
 if ! command -v node >/dev/null 2>&1 || ! dpkg --compare-versions "$(node -v | sed 's/^v//')" ge "22.13.0"; then
@@ -48,12 +52,12 @@ if [[ "$SCRIPT_DIR" != "$APP_DIR" ]]; then
   rsync -av --exclude 'node_modules' --exclude '.git' --exclude 'web/node_modules' --exclude '/data/' --exclude '/media/' "$SCRIPT_DIR/" "$APP_DIR/"
 fi
 
-# Migrate database if legacy database exists in $APP_DIR/data/watchroom.db or $STATE_DIR/data/watchroom.db
+# Migrate a legacy SQLite database to $DB_PATH if none exists yet
 if [[ -f "$APP_DIR/data/watchroom.db" && ! -f "$DB_PATH" ]]; then
   echo "Migrating legacy room database to $DB_PATH..."
   install -o "$APP_USER" -g "$APP_USER" -m 640 "$APP_DIR/data/watchroom.db" "$DB_PATH"
 elif [[ -f "$STATE_DIR/data/watchroom.db" && ! -f "$DB_PATH" ]]; then
-  echo "Migrating v2 room database to $DB_PATH..."
+  echo "Migrating legacy room database to $DB_PATH..."
   install -o "$APP_USER" -g "$APP_USER" -m 640 "$STATE_DIR/data/watchroom.db" "$DB_PATH"
 fi
 
@@ -64,10 +68,21 @@ chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
 cd "$APP_DIR"
 sudo -u "$APP_USER" npm ci --omit=dev
 
-# If DATABASE_URL is set, install pg package
-if [[ -n "$DATABASE_URL" ]]; then
-  echo "PostgreSQL DATABASE_URL detected. Installing pg driver..."
-  sudo -u "$APP_USER" npm install pg
+# Runtime environment (root-only; holds DATABASE_URL). Kept across upgrades unless DATABASE_URL is passed again.
+mkdir -p "$ENV_DIR"
+if [[ -n "$DATABASE_URL" || ! -f "$ENV_FILE" ]]; then
+  (
+    umask 077
+    echo "DB_PATH=$DB_PATH" > "$ENV_FILE"
+    if [[ -n "$DATABASE_URL" ]]; then echo "DATABASE_URL=$DATABASE_URL" >> "$ENV_FILE"; fi
+  )
+fi
+chmod 600 "$ENV_FILE"
+
+# pg is only needed for PostgreSQL; --no-save keeps package.json/lockfile untouched
+if [[ -n "$DATABASE_URL" ]] || grep -q '^DATABASE_URL=' "$ENV_FILE"; then
+  echo "PostgreSQL configured. Installing pg driver..."
+  sudo -u "$APP_USER" npm install --no-save pg
 fi
 
 # Build web frontend if web folder exists
@@ -93,15 +108,18 @@ cat <<'EOF' > /etc/cron.daily/watchroom-backup
 #!/bin/bash
 set -euo pipefail
 BACKUP_DIR="/var/backups/watchroom"
+umask 077
 mkdir -p "$BACKUP_DIR"
 DATE="$(date +%Y%m%d_%H%M%S)"
 
+set -a
+[[ -f /etc/watchroom/watchroom.env ]] && . /etc/watchroom/watchroom.env
+set +a
+
 if [[ -n "${DATABASE_URL:-}" ]]; then
   pg_dump "$DATABASE_URL" > "$BACKUP_DIR/watchroom_$DATE.sql"
-else
-  if [[ -f "/var/lib/watchroom/watchroom.db" ]]; then
-    sqlite3 /var/lib/watchroom/watchroom.db ".backup $BACKUP_DIR/watchroom_$DATE.db"
-  fi
+elif [[ -f "/var/lib/watchroom/watchroom.db" ]]; then
+  sqlite3 /var/lib/watchroom/watchroom.db ".backup $BACKUP_DIR/watchroom_$DATE.db"
 fi
 
 # Keep 14 days of backups

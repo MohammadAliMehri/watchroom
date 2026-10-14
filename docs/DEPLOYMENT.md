@@ -10,18 +10,25 @@ Copy the repository to the server and run the automated installer:
 
 ### For HTTP Testing
 ```bash
-sudo bash install-v2.sh
+sudo bash install-v3.sh
 ```
 
 ### For Production HTTPS (Automatic SSL Certificate)
 ```bash
-sudo DOMAIN=watch.example.com bash install-v2.sh
+sudo DOMAIN=watch.example.com bash install-v3.sh
 ```
 
+### For PostgreSQL
+```bash
+sudo DATABASE_URL=postgres://user:pass@localhost:5432/watchroom bash install-v3.sh
+```
+
+`DATABASE_URL` is stored in `/etc/watchroom/watchroom.env` (root-only) and kept across upgrades.
+
 The installer will:
-1. Install `ffmpeg`, `iptables`, `curl`, and Node.js 24 LTS when the installed version is below 22.13.
+1. Install `ffmpeg`, `iptables`, `curl`, `rsync`, `sqlite3`, and Node.js 24 LTS when the installed version is below 22.13.
 2. Create the system user `watchroom`.
-3. Set up `/var/lib/watchroom/media` and `/var/lib/watchroom/data`.
+3. Set up `/var/lib/watchroom/media` and the SQLite database at `/var/lib/watchroom/watchroom.db`.
 4. Build the React frontend into the canonical `public/` directory.
 5. Install and enable `watchroom-egress.service` and `watchroom.service`.
 6. Configure Caddy for automated TLS certificates (if `DOMAIN` is supplied).
@@ -29,7 +36,7 @@ The installer will:
 
 The production systemd service requires the egress firewall unit. Do not set `MEDIA_EGRESS_PROTECTED=true` in another deployment unless an equivalent OS/container egress policy is active. Local development can opt into unprotected remote conversion with `ALLOW_UNSAFE_MEDIA_FETCHES=true`; never expose that mode to untrusted users.
 
-During upgrades, the installer stops the existing service and migrates `/opt/watchroom/data/watchroom.db` to `/var/lib/watchroom/data/watchroom.db` only when the destination database does not already exist. Workspace `data/` and `media/` directories are excluded from deployment sync.
+During upgrades, the installer stops the existing service and migrates `/opt/watchroom/data/watchroom.db` to `/var/lib/watchroom/watchroom.db` only when the destination database does not already exist. Workspace `data/` and `media/` directories are excluded from deployment sync.
 
 ---
 
