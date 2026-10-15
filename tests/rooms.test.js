@@ -119,6 +119,18 @@ test('Rooms and Chat persistence and socket behaviors', async (t) => {
       }
     });
 
+    socket.on('playlist:addBatch', async (data, cb) => {
+      try {
+        if (!socket.data.roomId) {
+          return cb?.({ success: false, error: 'Must join a room first' });
+        }
+        const res = await roomManager.addBatchToPlaylist(socket.data.roomId, data.items, socket);
+        cb?.(res);
+      } catch (e) {
+        cb?.({ success: false, error: e.message });
+      }
+    });
+
     socket.on('chat:send', (data) => {
       roomManager.sendChat(socket, data.text);
     });
@@ -221,6 +233,35 @@ test('Rooms and Chat persistence and socket behaviors', async (t) => {
     assert.equal(items[0].addedBy, member.id);
 
     nonMember.disconnect();
+  });
+
+  await t.test('Member can batch add multiple URLs (e.g. for TV shows)', async () => {
+    const memberSocket = connectSocket(`${COOKIE_NAME}=${memberToken}`);
+    await new Promise(r => memberSocket.on('connect', r));
+    await new Promise(resolve => {
+      memberSocket.emit('room:join', { roomId: createdRoomId, password: 'RoomPassword123' }, resolve);
+    });
+
+    const batchRes = await new Promise(resolve => {
+      memberSocket.emit('playlist:addBatch', {
+        items: [
+          { url: 'https://example.com/show/s01e01.mkv', title: 'S01E01 - Pilot' },
+          { url: 'https://example.com/show/s01e02.mkv', title: 'S01E02 - Episode 2' },
+          { url: 'https://example.com/show/s01e03.mkv', title: 'S01E03 - Episode 3' },
+        ]
+      }, resolve);
+    });
+
+    assert.equal(batchRes.success, true);
+    assert.equal(batchRes.count, 3);
+
+    const items = await repo.listItems(createdRoomId);
+    assert.equal(items.length, 4);
+    assert.equal(items[1].title, 'S01E01 - Pilot');
+    assert.equal(items[2].title, 'S01E02 - Episode 2');
+    assert.equal(items[3].title, 'S01E03 - Episode 3');
+
+    memberSocket.disconnect();
   });
 
   await t.test('Messages persist and only last 200 messages are kept', async () => {

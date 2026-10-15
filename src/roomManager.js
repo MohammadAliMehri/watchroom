@@ -407,6 +407,8 @@ export class RoomManager {
       mediaSrc: room.playback.mediaSrc,
       mediaType: room.playback.mediaType,
       subtitles: room.playback.subtitles,
+      subtitleTracks: room.playback.subtitleTracks || [],
+      audioStreams: room.playback.audioStreams || [],
       isPreparing: room.playback.isPreparing,
       prepareProgress: room.playback.prepareProgress,
       prepareError: room.playback.prepareError
@@ -496,6 +498,8 @@ export class RoomManager {
       room.playback.mediaSrc = result.src;
       room.playback.mediaType = result.type;
       room.playback.subtitles = result.subtitles || null;
+      room.playback.subtitleTracks = result.subtitleTracks || [];
+      room.playback.audioStreams = result.audioStreams || [];
       room.playback.mediaKey = result.key || null;
       room.playback.prepareProgress = 100;
       room.playback.prepareError = null;
@@ -597,6 +601,78 @@ export class RoomManager {
     }
 
     return item;
+  }
+
+  async addBatchToPlaylist(roomId, items, socket) {
+    const room = this.rooms.get(roomId);
+    if (!room) return { success: false, error: 'Room not found' };
+    const user = socket.data.user;
+    if (!user) throw new Error('Sign in required');
+
+    const repo = await getRepo();
+    const isMember = await repo.isMember(roomId, user.id);
+    if (!isMember) {
+      throw new Error('Only room members can add items');
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error('No items provided');
+    }
+
+    const playlist = await repo.listItems(roomId);
+    let currentPosition = playlist.length;
+    const addedItems = [];
+
+    for (const raw of items) {
+      if (!raw || !raw.url || !raw.url.trim()) continue;
+      const url = raw.url.trim();
+      try {
+        await validateUrl(url);
+      } catch {
+        continue;
+      }
+
+      let cleanTitle = raw.title?.trim();
+      if (!cleanTitle) {
+        try {
+          const pathname = new URL(url).pathname;
+          cleanTitle = decodeURIComponent(pathname.split('/').pop() || `Episode ${currentPosition + 1}`);
+        } catch {
+          cleanTitle = `Episode ${currentPosition + 1}`;
+        }
+      }
+
+      const id = crypto.randomUUID();
+      const item = await repo.addItem({
+        id,
+        roomId,
+        position: currentPosition++,
+        url,
+        title: cleanTitle,
+        format: 'direct',
+        durationSec: 0,
+        addedBy: user.id
+      });
+      addedItems.push(item);
+    }
+
+    if (addedItems.length === 0) {
+      throw new Error('No valid video URLs were found to add');
+    }
+
+    const updated = await repo.listItems(roomId);
+    this.io.to(roomId).emit('playlist:updated', updated);
+
+    if (!room.playback.currentItem && addedItems.length > 0) {
+      room.playback.currentItem = addedItems[0];
+      room.playback.itemIndex = playlist.length;
+      room.playback.currentTime = 0;
+      room.playback.isPlaying = false;
+      await this.savePlaybackImmediate(roomId);
+      this.prepareRoomMedia(roomId, addedItems[0].url).catch(() => { });
+    }
+
+    return { success: true, count: addedItems.length };
   }
 
   async removeFromPlaylist(roomId, itemId, socket) {

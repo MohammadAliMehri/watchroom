@@ -6,19 +6,43 @@ This guide covers production deployment on Ubuntu / Debian systems, systemd serv
 
 ## 1. Quick Automated Install
 
+### Option A: Docker Compose (Universal & Recommended)
+
+Deploy WatchRoom with a single command via Docker Compose:
+
+```bash
+# Start in detached background mode
+docker compose up -d
+
+# View live application logs
+docker compose logs -f
+
+# Stop container
+docker compose down
+```
+
+The container automatically mounts persistent storage for:
+- SQLite Database: `./data:/app/data`
+- Transcoded HLS Segments: `./media:/app/media`
+- Includes built-in healthcheck probing `/healthz` every 30 seconds.
+
+---
+
+### Option B: Linux Systemd Installer (Ubuntu / Debian)
+
 Copy the repository to the server and run the automated installer:
 
-### For HTTP Testing
+#### For HTTP Testing
 ```bash
 sudo bash install-v3.sh
 ```
 
-### For Production HTTPS (Automatic SSL Certificate)
+#### For Production HTTPS (Automatic SSL Certificate)
 ```bash
 sudo DOMAIN=watch.example.com bash install-v3.sh
 ```
 
-### For PostgreSQL
+#### For PostgreSQL
 ```bash
 sudo DATABASE_URL=postgres://user:pass@localhost:5432/watchroom bash install-v3.sh
 ```

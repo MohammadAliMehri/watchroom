@@ -34,6 +34,66 @@ export async function runMigrations(driver) {
     );
   `);
 
+  // Migrate legacy SQLite rooms table if older schema columns exist/missing
+  try {
+    const tableInfo = await driver.all("PRAGMA table_info(rooms)");
+    if (tableInfo && tableInfo.length > 0) {
+      const colNames = new Set(tableInfo.map(c => c.name));
+      if (!colNames.has('owner_id')) {
+        await driver.exec("ALTER TABLE rooms ADD COLUMN owner_id TEXT;");
+      }
+      if (!colNames.has('password_hash')) {
+        await driver.exec("ALTER TABLE rooms ADD COLUMN password_hash TEXT;");
+        if (colNames.has('password')) {
+          await driver.exec("UPDATE rooms SET password_hash = password WHERE password_hash IS NULL;");
+        }
+      }
+      if (colNames.has('password')) {
+        try {
+          await driver.exec("ALTER TABLE rooms DROP COLUMN password;");
+        } catch { }
+      }
+      if (!colNames.has('item_index')) {
+        await driver.exec("ALTER TABLE rooms ADD COLUMN item_index INTEGER NOT NULL DEFAULT -1;");
+      }
+      if (!colNames.has('playing')) {
+        await driver.exec("ALTER TABLE rooms ADD COLUMN playing INTEGER NOT NULL DEFAULT 0;");
+      }
+      if (!colNames.has('position_sec')) {
+        await driver.exec("ALTER TABLE rooms ADD COLUMN position_sec REAL NOT NULL DEFAULT 0;");
+      }
+      if (!colNames.has('position_at')) {
+        await driver.exec("ALTER TABLE rooms ADD COLUMN position_at INTEGER NOT NULL DEFAULT 0;");
+      }
+      if (!colNames.has('updated_at')) {
+        await driver.exec("ALTER TABLE rooms ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;");
+        if (colNames.has('created_at')) {
+          await driver.exec("UPDATE rooms SET updated_at = created_at WHERE updated_at = 0;");
+        }
+      }
+    }
+  } catch { }
+
+  // Migrate legacy SQLite playlist_items table if format or duration_sec are missing
+  try {
+    const tableInfo = await driver.all("PRAGMA table_info(playlist_items)");
+    if (tableInfo && tableInfo.length > 0) {
+      const colNames = new Set(tableInfo.map(c => c.name));
+      if (!colNames.has('format')) {
+        await driver.exec("ALTER TABLE playlist_items ADD COLUMN format TEXT NOT NULL DEFAULT 'mp4';");
+      }
+      if (!colNames.has('duration_sec')) {
+        await driver.exec("ALTER TABLE playlist_items ADD COLUMN duration_sec REAL NOT NULL DEFAULT 0;");
+        if (colNames.has('duration')) {
+          await driver.exec("UPDATE playlist_items SET duration_sec = duration WHERE duration_sec = 0;");
+        }
+      }
+      if (!colNames.has('added_by')) {
+        await driver.exec("ALTER TABLE playlist_items ADD COLUMN added_by TEXT;");
+      }
+    }
+  } catch { }
+
   const migrationsDir = path.join(__dirname, 'migrations');
   if (!fs.existsSync(migrationsDir)) return;
 

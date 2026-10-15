@@ -1,0 +1,14 @@
+node_modules
+web/node_modules
+media/*
+!media/.gitkeep
+data/*
+!data/.gitkeep
+.git
+.github
+.gemini
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+dist

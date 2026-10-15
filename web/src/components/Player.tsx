@@ -12,9 +12,14 @@ import {
   Loader2,
   AlertCircle,
   Subtitles as SubtitlesIcon,
-  ShieldAlert
+  ShieldAlert,
+  FastForward,
+  Volume1,
+  Upload,
+  Check,
+  Clock
 } from 'lucide-react';
-import type { PlaybackState } from '../hooks/useRoom';
+import type { PlaybackState, SubtitleTrack } from '../hooks/useRoom';
 import { getGradientPoster } from '../utils/gradientPoster';
 import { mapServerError } from '../utils/errorMap';
 import { Button } from '@/components/ui/button';
@@ -23,26 +28,45 @@ interface PlayerProps {
   playback: PlaybackState;
   isHost: boolean;
   hostOnly: boolean;
+  hasNextItem?: boolean;
+  nextItemTitle?: string;
   onControl: (action: 'play' | 'pause' | 'seek' | 'changeItem', currentTime?: number, itemId?: string) => void;
   onNextItem?: () => void;
   onFocusLinkInput?: () => void;
   onRetry: () => void;
+  onChangeAudioTrack?: (index: number) => void;
+}
+
+function srtToVtt(srtText: string): string {
+  return 'WEBVTT\n\n' + srtText
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
 }
 
 export const Player: React.FC<PlayerProps> = ({
   playback,
   isHost,
   hostOnly,
+  hasNextItem,
+  nextItemTitle,
   onControl,
   onNextItem,
   onFocusLinkInput,
   onRetry,
+  onChangeAudioTrack,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Local playback UI states (kept minimal so we don't trigger room re-renders)
+  // Controls auto-hide timer and touch refs
+  const hideTimerRef = useRef<any>(null);
+  const lastTouchTimeRef = useRef<number>(0);
+  const touchStartYRef = useRef<number>(0);
+
+  // Local playback UI states
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
@@ -51,12 +75,17 @@ export const Player: React.FC<PlayerProps> = ({
   const [controlsVisible, setControlsVisible] = useState(true);
   const [drift, setDrift] = useState(0);
   const [fatalError, setFatalError] = useState<string | null>(null);
-  const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
 
-  // Controls auto-hide timer
-  const hideTimerRef = useRef<any>(null);
-  const lastTouchTimeRef = useRef<number>(0);
-  const touchStartYRef = useRef<number>(0);
+  // Subtitle options states
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
+  const [selectedSubTrackId, setSelectedSubTrackId] = useState<string>('default');
+  const [customSubtitleUrl, setCustomSubtitleUrl] = useState<string | null>(null);
+  const [customSubtitleLabel, setCustomSubtitleLabel] = useState<string>('');
+  const [subtitleOffset, setSubtitleOffset] = useState<number>(0);
+  const [subtitleFontSize, setSubtitleFontSize] = useState<number>(18);
+  const [isSubtitleModalOpen, setIsSubtitleModalOpen] = useState(false);
+  const [isAudioMenuOpen, setIsAudioMenuOpen] = useState(false);
+  const [selectedAudioIndex, setSelectedAudioIndex] = useState<number>(0);
 
   const canControl = !hostOnly || isHost;
 
@@ -146,19 +175,38 @@ export const Player: React.FC<PlayerProps> = ({
     };
   }, [playback.mediaSrc, playback.mediaType]);
 
-  // Drive subtitle visibility through the text track mode; <track default> is unreliable once the element is added dynamically.
+  // All available subtitle tracks
+  const allSubtitleTracks: SubtitleTrack[] = [
+    ...(playback.subtitleTracks && playback.subtitleTracks.length > 0
+      ? playback.subtitleTracks
+      : playback.subtitles
+      ? [{ id: 'default', label: 'Default Subtitles', src: playback.subtitles, default: true }]
+      : []),
+    ...(customSubtitleUrl ? [{ id: 'custom', label: customSubtitleLabel || 'Custom Subtitles', src: customSubtitleUrl }] : [])
+  ];
+
+  const activeSubtitleSrc = selectedSubTrackId === 'off'
+    ? null
+    : selectedSubTrackId === 'custom'
+    ? customSubtitleUrl
+    : selectedSubTrackId === 'default'
+    ? (allSubtitleTracks.find(t => t.default)?.src || playback.subtitles || allSubtitleTracks[0]?.src || null)
+    : (allSubtitleTracks.find(t => t.id === selectedSubTrackId)?.src || null);
+
+  // Drive subtitle visibility through the text track mode
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     const apply = () => {
-      for (const track of Array.from(video.textTracks)) {
-        track.mode = subtitlesEnabled ? 'showing' : 'hidden';
+      const tracks = Array.from(video.textTracks);
+      for (const track of tracks) {
+        track.mode = subtitlesEnabled && selectedSubTrackId !== 'off' ? 'showing' : 'hidden';
       }
     };
     apply();
     video.textTracks.addEventListener('addtrack', apply);
     return () => video.textTracks.removeEventListener('addtrack', apply);
-  }, [playback.subtitles, subtitlesEnabled]);
+  }, [activeSubtitleSrc, subtitlesEnabled, selectedSubTrackId]);
 
   // Sync engine: synchronizes playback state with room clock
   useEffect(() => {
@@ -269,6 +317,26 @@ export const Player: React.FC<PlayerProps> = ({
     }
   };
 
+  const handleSubtitleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const content = evt.target?.result as string;
+      let vttContent = content;
+      if (file.name.toLowerCase().endsWith('.srt')) {
+        vttContent = srtToVtt(content);
+      }
+      const blob = new Blob([vttContent], { type: 'text/vtt' });
+      const blobUrl = URL.createObjectURL(blob);
+      setCustomSubtitleUrl(blobUrl);
+      setCustomSubtitleLabel(file.name);
+      setSelectedSubTrackId('custom');
+      setSubtitlesEnabled(true);
+    };
+    reader.readAsText(file);
+  };
+
   // Keyboard shortcuts (Section 12.6)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -289,6 +357,11 @@ export const Player: React.FC<PlayerProps> = ({
         case 'K':
           e.preventDefault();
           togglePlay();
+          break;
+        case 'c':
+        case 'C':
+          e.preventDefault();
+          setSubtitlesEnabled(prev => !prev);
           break;
         case 'ArrowLeft':
           e.preventDefault();
@@ -326,7 +399,11 @@ export const Player: React.FC<PlayerProps> = ({
           if (onFocusLinkInput) onFocusLinkInput();
           break;
         case 'Escape':
-          if (document.fullscreenElement) {
+          if (isSubtitleModalOpen) {
+            setIsSubtitleModalOpen(false);
+          } else if (isAudioMenuOpen) {
+            setIsAudioMenuOpen(false);
+          } else if (document.fullscreenElement) {
             document.exitFullscreen().catch(console.error);
             setIsFullscreen(false);
           }
@@ -336,7 +413,7 @@ export const Player: React.FC<PlayerProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [playback.isPlaying, currentTime, duration, volume, isMuted, canControl, onNextItem, onFocusLinkInput]);
+  }, [playback.isPlaying, currentTime, duration, volume, isMuted, canControl, onNextItem, onFocusLinkInput, isSubtitleModalOpen, isAudioMenuOpen]);
 
   // Touch handlers (Section 12.6)
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -373,7 +450,6 @@ export const Player: React.FC<PlayerProps> = ({
     }
 
     lastTouchTimeRef.current = now;
-    // Single tap toggles controls visibility
     setControlsVisible(prev => !prev);
   };
 
@@ -385,29 +461,62 @@ export const Player: React.FC<PlayerProps> = ({
   const prepErrorInfo = playback.prepareError ? mapServerError(playback.prepareError) : null;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="relative flex flex-col gap-2">
+      {/* Cinema Ambient Glow Backdrop */}
+      <div
+        className="absolute -inset-1 bg-gradient-to-r from-violet-600/20 via-indigo-600/10 to-cyan-500/20 blur-2xl rounded-3xl opacity-60 pointer-events-none transition-opacity duration-700"
+        aria-hidden="true"
+      />
+
+      {/* Dynamic Cue Styling */}
+      <style>{`
+        video::cue {
+          font-size: ${subtitleFontSize}px !important;
+          line-height: 1.4 !important;
+          background-color: rgba(0, 0, 0, 0.75) !important;
+          color: #ffffff !important;
+          text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 1px #000 !important;
+          font-family: system-ui, -apple-system, sans-serif !important;
+        }
+      `}</style>
+
+      {/* Hidden Subtitle File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".srt,.vtt"
+        className="hidden"
+        onChange={handleSubtitleFileUpload}
+      />
+
       {/* Video Container (16:9 ratio, rounded-2xl, shadow) */}
       <div
         ref={containerRef}
         onMouseMove={showControls}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
-        className="relative w-full aspect-16-9 bg-[#0b0d12] rounded-2xl overflow-hidden shadow-2xl border border-white/10 group select-none flex items-center justify-center"
+        className="relative w-full aspect-16-9 bg-[#0b0d12] rounded-2xl overflow-hidden shadow-2xl border border-white/10 group select-none flex items-center justify-center z-10"
       >
         {/* Real HTML5 Video element */}
         <video
           ref={videoRef}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
+          onEnded={() => {
+            if (canControl && onNextItem && hasNextItem) {
+              onNextItem();
+            }
+          }}
           playsInline
           className={`w-full h-full object-contain ${!playback.mediaSrc || playback.isPreparing ? 'hidden' : 'block'}`}
         >
-          {playback.subtitles && (
+          {activeSubtitleSrc && (
             <track
-              key={playback.subtitles}
+              key={`${activeSubtitleSrc}_${subtitleOffset}`}
               kind="subtitles"
-              src={playback.subtitles}
+              src={activeSubtitleSrc}
               label="Subtitles"
+              default
             />
           )}
         </video>
@@ -423,9 +532,9 @@ export const Player: React.FC<PlayerProps> = ({
                 <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-violet-400">
                   <Play className="w-8 h-8 ml-1" />
                 </div>
-                <h3 className="text-xl font-semibold text-white">Paste a movie link below to start.</h3>
+                <h3 className="text-xl font-semibold text-white">Paste a video link below to start.</h3>
                 <p className="text-sm text-gray-400 max-w-sm">
-                  WatchRoom supports MKV, MP4, WebM, AVI, MOV and TS streams.
+                  WatchRoom converts MKV, MP4, WebM, AVI, MOV and TS streams for synchronized browser playback.
                 </p>
               </div>
             ) : playback.isPreparing ? (
@@ -434,13 +543,13 @@ export const Player: React.FC<PlayerProps> = ({
                 <div>
                   <h3 className="text-xl font-semibold text-white">Preparing video…</h3>
                   <p className="text-sm text-gray-400 mt-1">
-                    MKV and non-browser files are converted first for smooth playback.
+                    Converting stream & extracting subtitles for smooth sync.
                   </p>
                 </div>
                 {playback.prepareProgress > 0 && (
                   <div className="w-64 bg-gray-800 rounded-full h-2 overflow-hidden border border-white/10 mt-2">
                     <div
-                      className="bg-violet-500 h-2 transition-all duration-300"
+                      className="bg-gradient-to-r from-violet-500 to-cyan-400 h-2 transition-all duration-300"
                       style={{ width: `${playback.prepareProgress}%` }}
                     />
                   </div>
@@ -463,7 +572,7 @@ export const Player: React.FC<PlayerProps> = ({
           </div>
         )}
 
-        {/* Error Overlay (fatal HLS or prepare error) */}
+        {/* Error Overlay */}
         {(errorInfo || prepErrorInfo) && (
           <div className="absolute inset-0 z-30 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center gap-3">
             <AlertCircle className="w-12 h-12 text-red-400" />
@@ -482,41 +591,249 @@ export const Player: React.FC<PlayerProps> = ({
               onClick={onRetry}
               className="mt-2 bg-violet-600 text-white hover:bg-violet-500"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-4 h-4 mr-1" />
               Try again
             </Button>
           </div>
         )}
 
+        {/* Subtitle Options Modal / Floating Panel */}
+        {isSubtitleModalOpen && (
+          <div
+            className="absolute bottom-16 right-4 z-40 w-80 rounded-2xl bg-[#121622]/95 border border-white/10 p-4 text-white shadow-2xl backdrop-blur-xl flex flex-col gap-3 animate-in fade-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-violet-400 flex items-center gap-1.5">
+                <SubtitlesIcon className="w-4 h-4" />
+                Subtitles & Audio Settings
+              </span>
+              <button
+                onClick={() => setIsSubtitleModalOpen(false)}
+                className="text-gray-400 hover:text-white text-xs px-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Subtitle Toggle */}
+            <div className="flex items-center justify-between py-1">
+              <span className="text-xs text-gray-300">Show Subtitles</span>
+              <button
+                onClick={() => setSubtitlesEnabled(!subtitlesEnabled)}
+                className={`w-10 h-5 flex items-center rounded-full p-1 transition-colors ${
+                  subtitlesEnabled ? 'bg-violet-600' : 'bg-gray-700'
+                }`}
+              >
+                <div
+                  className={`bg-white w-3.5 h-3.5 rounded-full shadow-md transform transition-transform ${
+                    subtitlesEnabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Subtitle Track Selector */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                Select Track
+              </span>
+              <div className="flex flex-col gap-1 max-h-32 overflow-y-auto pr-1">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedSubTrackId('off'); setSubtitlesEnabled(false); }}
+                  className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                    !subtitlesEnabled || selectedSubTrackId === 'off'
+                      ? 'bg-violet-600/30 text-violet-300 font-semibold'
+                      : 'text-gray-300 hover:bg-white/5'
+                  }`}
+                >
+                  <span>Off</span>
+                  {(!subtitlesEnabled || selectedSubTrackId === 'off') && <Check className="w-3.5 h-3.5 text-violet-400" />}
+                </button>
+
+                {allSubtitleTracks.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedSubTrackId(t.id);
+                      setSubtitlesEnabled(true);
+                    }}
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                      subtitlesEnabled && selectedSubTrackId === t.id
+                        ? 'bg-violet-600/30 text-violet-300 font-semibold'
+                        : 'text-gray-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <span className="truncate">{t.label}</span>
+                    {subtitlesEnabled && selectedSubTrackId === t.id && (
+                      <Check className="w-3.5 h-3.5 text-violet-400 shrink-0 ml-1" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Subtitle File Upload */}
+            <div className="pt-2 border-t border-white/5 flex flex-col gap-1.5">
+              <Button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                variant="outline"
+                size="sm"
+                className="w-full h-8 text-xs bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10 flex items-center justify-center gap-1.5"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload Custom .SRT / .VTT</span>
+              </Button>
+            </div>
+
+            {/* Subtitle Font Size */}
+            <div className="flex items-center justify-between pt-2 border-t border-white/5">
+              <span className="text-xs text-gray-400">Size</span>
+              <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded-lg border border-white/5 text-xs">
+                {[
+                  { label: 'S', size: 14 },
+                  { label: 'M', size: 18 },
+                  { label: 'L', size: 24 },
+                  { label: 'XL', size: 30 }
+                ].map(s => (
+                  <button
+                    key={s.label}
+                    onClick={() => setSubtitleFontSize(s.size)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                      subtitleFontSize === s.size ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Subtitle Timing / Sync Delay */}
+            <div className="flex flex-col gap-1.5 pt-2 border-t border-white/5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  Sync Delay
+                </span>
+                <span className="font-mono text-violet-400 font-semibold">
+                  {subtitleOffset > 0 ? `+${subtitleOffset.toFixed(1)}s` : `${subtitleOffset.toFixed(1)}s`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSubtitleOffset(prev => Math.round((prev - 0.5) * 10) / 10)}
+                  className="px-2 py-1 bg-white/5 hover:bg-white/10 rounded text-xs text-gray-300"
+                >
+                  -0.5s
+                </button>
+                <input
+                  type="range"
+                  min="-5"
+                  max="5"
+                  step="0.1"
+                  value={subtitleOffset}
+                  onChange={(e) => setSubtitleOffset(parseFloat(e.target.value))}
+                  className="flex-1 h-1 bg-white/20 rounded accent-violet-500 cursor-pointer"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSubtitleOffset(prev => Math.round((prev + 0.5) * 10) / 10)}
+                  className="px-2 py-1 bg-white/5 hover:bg-white/10 rounded text-xs text-gray-300"
+                >
+                  +0.5s
+                </button>
+                {subtitleOffset !== 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSubtitleOffset(0)}
+                    className="text-[10px] text-gray-400 hover:text-white underline ml-1"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Video Overlay Controls */}
         <div
-          className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 flex flex-col justify-between p-4 transition-opacity duration-200 ${controlsVisible || !playback.isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
-            }`}
+          className={`absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/40 flex flex-col justify-between p-4 transition-opacity duration-200 z-30 ${
+            controlsVisible || !playback.isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
         >
-          {/* Top Bar: Title & Subtitle toggle */}
+          {/* Top Bar: Title & Subtitle / Audio badges */}
           <div className="flex items-center justify-between text-white">
-            <h3 className="text-sm font-medium truncate max-w-[70%] drop-shadow">
+            <h3 className="text-sm font-medium truncate max-w-[60%] drop-shadow">
               {currentTitle}
             </h3>
-            {playback.subtitles && (
+
+            <div className="flex items-center gap-2">
+              {/* Audio Stream Switcher if multi-audio exists */}
+              {playback.audioStreams && playback.audioStreams.length > 1 && (
+                <div className="relative">
+                  <Button
+                    onClick={() => setIsAudioMenuOpen(!isAudioMenuOpen)}
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 bg-black/60 border border-white/15 text-xs text-cyan-300 hover:bg-black/80 hover:text-white px-2.5 rounded-lg"
+                  >
+                    <Volume1 className="w-3.5 h-3.5 mr-1 text-cyan-400" />
+                    <span>Audio ({playback.audioStreams.length})</span>
+                  </Button>
+
+                  {isAudioMenuOpen && (
+                    <div
+                      className="absolute right-0 top-full mt-1.5 w-48 rounded-xl bg-[#131722] border border-white/10 shadow-2xl p-1 z-50 flex flex-col gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {playback.audioStreams.map((a, idx) => (
+                        <button
+                          key={a.index}
+                          onClick={() => {
+                            setSelectedAudioIndex(idx);
+                            setIsAudioMenuOpen(false);
+                            onChangeAudioTrack?.(idx);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs text-left ${
+                            selectedAudioIndex === idx ? 'bg-cyan-950/60 text-cyan-300 font-semibold' : 'text-gray-300 hover:bg-white/5'
+                          }`}
+                        >
+                          <span className="truncate">{a.title || a.language}</span>
+                          {selectedAudioIndex === idx && <Check className="w-3 h-3 text-cyan-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Subtitles Options Trigger */}
               <Button
-                onClick={() => setSubtitlesEnabled(!subtitlesEnabled)}
-                aria-label={subtitlesEnabled ? 'Disable subtitles' : 'Enable subtitles'}
+                onClick={() => setIsSubtitleModalOpen(!isSubtitleModalOpen)}
+                aria-label="Subtitles & Options"
                 variant="ghost"
-                size="icon"
-                className={`border ${subtitlesEnabled
-                    ? 'bg-violet-600/80 border-violet-400 text-white'
-                    : 'bg-black/50 border-white/20 text-gray-400 hover:bg-black/70 hover:text-white'
-                  }`}
+                size="sm"
+                className={`h-8 border text-xs px-2.5 rounded-lg transition-all ${
+                  subtitlesEnabled && selectedSubTrackId !== 'off'
+                    ? 'bg-violet-600/90 border-violet-400 text-white shadow-md shadow-violet-600/20'
+                    : 'bg-black/60 border-white/20 text-gray-400 hover:bg-black/80 hover:text-white'
+                }`}
               >
-                <SubtitlesIcon className="w-4 h-4" />
+                <SubtitlesIcon className="w-3.5 h-3.5 mr-1" />
+                <span>CC</span>
               </Button>
-            )}
+            </div>
           </div>
 
           {/* Bottom Bar: Seekbar & Controls */}
           <div className="flex flex-col gap-2">
-            {/* Seek Bar (Section 12.2: Do not animate with CSS transitions) */}
+            {/* Seek Bar */}
             <div className="relative flex items-center group/seek">
               <input
                 type="range"
@@ -531,7 +848,7 @@ export const Player: React.FC<PlayerProps> = ({
               />
             </div>
 
-            {/* Play, Time, Volume, Fullscreen Buttons */}
+            {/* Play, Time, Volume, Next Episode, Fullscreen Buttons */}
             <div className="flex items-center justify-between text-white text-xs">
               <div className="flex items-center gap-3">
                 {/* Play / Pause or Spinner */}
@@ -541,10 +858,10 @@ export const Player: React.FC<PlayerProps> = ({
                   aria-label={playback.isPlaying ? 'Pause video' : 'Play video'}
                   variant="ghost"
                   size="icon"
-                  className="size-10 rounded-lg bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  className="size-10 rounded-xl bg-violet-600 text-white hover:bg-violet-500 hover:text-white shadow-lg shadow-violet-600/30"
                 >
                   {playback.isPreparing ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-violet-400" />
+                    <Loader2 className="w-5 h-5 animate-spin text-white" />
                   ) : playback.isPlaying ? (
                     <Pause className="w-5 h-5 fill-current" />
                   ) : (
@@ -559,7 +876,7 @@ export const Player: React.FC<PlayerProps> = ({
                   aria-label="Rewind 10 seconds"
                   variant="ghost"
                   size="icon"
-                  className="size-8 text-gray-300 hover:bg-transparent hover:text-white"
+                  className="size-8 text-gray-300 hover:bg-white/10 hover:text-white rounded-lg"
                 >
                   <RotateCcw className="w-4 h-4" />
                 </Button>
@@ -569,10 +886,25 @@ export const Player: React.FC<PlayerProps> = ({
                   aria-label="Forward 10 seconds"
                   variant="ghost"
                   size="icon"
-                  className="size-8 text-gray-300 hover:bg-transparent hover:text-white"
+                  className="size-8 text-gray-300 hover:bg-white/10 hover:text-white rounded-lg"
                 >
                   <RotateCw className="w-4 h-4" />
                 </Button>
+
+                {/* Next Episode Button */}
+                {hasNextItem && onNextItem && (
+                  <Button
+                    onClick={onNextItem}
+                    disabled={!canControl}
+                    title={nextItemTitle ? `Next: ${nextItemTitle}` : 'Next episode'}
+                    aria-label="Next episode"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-violet-300 hover:bg-violet-600/20 hover:text-white rounded-lg"
+                  >
+                    <FastForward className="w-4 h-4" />
+                  </Button>
+                )}
 
                 {/* Time Display with tabular-nums */}
                 <div className="tabular-nums font-mono text-gray-300 select-none">
@@ -583,14 +915,14 @@ export const Player: React.FC<PlayerProps> = ({
               </div>
 
               <div className="flex items-center gap-3">
-                {/* Volume slider (hidden on mobile, uses device volume) */}
+                {/* Volume slider */}
                 <div className="hidden sm:flex items-center gap-2">
                   <Button
                     onClick={toggleMute}
                     aria-label={isMuted ? 'Unmute' : 'Mute'}
                     variant="ghost"
                     size="icon"
-                    className="size-8 text-gray-300 hover:bg-transparent hover:text-white"
+                    className="size-8 text-gray-300 hover:bg-white/10 hover:text-white rounded-lg"
                   >
                     {isMuted || volume === 0 ? (
                       <VolumeX className="w-4 h-4" />
@@ -616,7 +948,7 @@ export const Player: React.FC<PlayerProps> = ({
                   aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
                   variant="ghost"
                   size="icon"
-                  className="size-8 text-gray-300 hover:bg-transparent hover:text-white"
+                  className="size-8 text-gray-300 hover:bg-white/10 hover:text-white rounded-lg"
                 >
                   {isFullscreen ? (
                     <Minimize className="w-4 h-4" />
@@ -630,19 +962,21 @@ export const Player: React.FC<PlayerProps> = ({
         </div>
       </div>
 
-      {/* Sync pill & Status line (Section 12.5) */}
+      {/* Sync pill & Status line */}
       <div className="flex items-center justify-between px-1 text-xs">
         {/* Sync Status Pill */}
         <div className="flex items-center gap-2">
           <div
-            className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium transition-colors ${inSync
+            className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium transition-colors ${
+              inSync
                 ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
                 : 'bg-amber-950/60 border-amber-500/30 text-amber-300'
-              }`}
+            }`}
           >
             <span
-              className={`w-1.5 h-1.5 rounded-full ${inSync ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-ping'
-                }`}
+              className={`w-1.5 h-1.5 rounded-full ${
+                inSync ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-ping'
+              }`}
             />
             <span>{inSync ? 'In sync' : 'Catching up…'}</span>
           </div>
@@ -652,18 +986,27 @@ export const Player: React.FC<PlayerProps> = ({
               {isHost ? 'You are controlling playback' : 'Playback locked to host'}
             </span>
           )}
+
+          {activeSubtitleSrc && subtitlesEnabled && (
+            <span className="text-[10px] text-violet-400/80 bg-violet-950/40 border border-violet-500/20 px-2 py-0.5 rounded-full font-mono">
+              CC: {allSubtitleTracks.find(t => t.id === selectedSubTrackId)?.label || 'Active'}
+            </span>
+          )}
         </div>
 
-        {/* Keyboard hints tooltip reminder */}
+        {/* Keyboard hints */}
         <div className="hidden lg:flex items-center gap-3 text-gray-400 text-[11px]">
           <span>
             <kbd className="px-1.5 py-0.5 bg-gray-800 rounded border border-gray-700 text-gray-300">Space</kbd> Play
           </span>
           <span>
+            <kbd className="px-1.5 py-0.5 bg-gray-800 rounded border border-gray-700 text-gray-300">C</kbd> Subs
+          </span>
+          <span>
             <kbd className="px-1.5 py-0.5 bg-gray-800 rounded border border-gray-700 text-gray-300">←/→</kbd> 10s
           </span>
           <span>
-            <kbd className="px-1.5 py-0.5 bg-gray-800 rounded border border-gray-700 text-gray-300">/</kbd> Add link
+            <kbd className="px-1.5 py-0.5 bg-gray-800 rounded border border-gray-700 text-gray-300">N</kbd> Next
           </span>
         </div>
       </div>

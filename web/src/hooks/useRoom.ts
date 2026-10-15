@@ -41,6 +41,21 @@ export interface Stats {
     viewers: number;
 }
 
+export interface SubtitleTrack {
+    id: string;
+    label: string;
+    language?: string;
+    src: string;
+    default?: boolean;
+}
+
+export interface AudioStream {
+    index: number;
+    codec: string;
+    language: string;
+    title: string;
+}
+
 export interface PlaybackState {
     currentItem: PlaylistItem | null;
     currentTime: number;
@@ -49,6 +64,8 @@ export interface PlaybackState {
     mediaSrc: string | null;
     mediaType: string | null;
     subtitles: string | null;
+    subtitleTracks?: SubtitleTrack[];
+    audioStreams?: AudioStream[];
     isPreparing: boolean;
     prepareProgress: number;
     prepareError: string | null;
@@ -82,6 +99,8 @@ const initialPlayback = (): PlaybackState => ({
     mediaSrc: null,
     mediaType: null,
     subtitles: null,
+    subtitleTracks: [],
+    audioStreams: [],
     isPreparing: false,
     prepareProgress: 0,
     prepareError: null,
@@ -317,6 +336,28 @@ export function useRoom() {
         [activeRoomId],
     );
 
+    const addBatchToPlaylist = useCallback(
+        (items: { url: string; title?: string }[]) =>
+            new Promise<{ success: boolean; count?: number; error?: string }>((resolve) => {
+                if (!socketRef.current || !activeRoomId) return resolve({ success: false, error: 'Not in room' });
+                socketRef.current.emit('playlist:addBatch', { items }, (ack?: { success: boolean; count?: number; error?: string }) => {
+                    resolve(ack || { success: true });
+                });
+            }),
+        [activeRoomId],
+    );
+
+    const changeAudioTrack = useCallback(
+        (audioTrackIndex: number) => {
+            if (!socketRef.current || !activeRoomId || !playback.currentItem) return;
+            socketRef.current.emit('media:prepare', {
+                url: playback.currentItem.url,
+                audioTrackIndex
+            });
+        },
+        [activeRoomId, playback.currentItem],
+    );
+
     const removeFromPlaylist = useCallback(
         (itemId: string) => {
             if (socketRef.current && activeRoomId) {
@@ -372,6 +413,8 @@ export function useRoom() {
         leaveRoom,
         sendControl,
         addToPlaylist,
+        addBatchToPlaylist,
+        changeAudioTrack,
         removeFromPlaylist,
         selectPlaylistItem,
         sendChat,

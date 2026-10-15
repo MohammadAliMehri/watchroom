@@ -70,8 +70,15 @@ The video conversion pipeline:
 ### 1.4 `src/roomManager.js`
 Coordinates live rooms, state broadcasting, member presence, and synchronizes the playback clock. Maintains an in-memory view of active rooms synchronized with the database.
 
-### 1.5 `src/db.js`
-Lightweight persistent storage using Node 24's native `node:sqlite` (`DatabaseSync`). Persists room metadata, playlist items, and chat history across restarts.
+### 1.5 Database & Persistence (`db/`)
+Dual-driver persistent storage abstraction:
+- **SQLite Engine**: Powered by Node 22/24's native `node:sqlite` (`DatabaseSync`) in WAL mode for ultra-fast local development and single-server deployments.
+- **PostgreSQL Engine**: Optional full enterprise persistence (`pg` driver) activated when `DATABASE_URL` is set.
+- **Repository Pattern (`db/repo.js`)**: Encapsulates user accounts, authentication sessions, room ownership, batch playlist items, and chat history.
+- **Automated Migrations (`db/migrations/`)**: Automatically applies schema versions and migrates legacy tables seamlessly on startup.
+
+### 1.6 Docker Containerization
+Multi-stage build packaging the Node 22 runtime, system FFmpeg, Vite-built frontend, and persistent volumes (`/app/data` and `/app/media`) into a unified container deployable via `docker compose up -d`.
 
 ---
 

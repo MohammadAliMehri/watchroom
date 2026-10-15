@@ -81,10 +81,11 @@ Serves HLS segments and playlists.
 | `room:leave` | *(None)* | Leaves the current room. |
 | `sync:control` | `{ action, currentTime, itemId }` | Sends a playback action: `'play'`, `'pause'`, `'seek'`, or `'changeItem'`. |
 | `media:prepare` | `{ url, audioTrackIndex? }` | Requests conversion of a video source to HLS. In host-only rooms, only the host may request media preparation; the acknowledgement returns `{ success, error? }`. |
-| `playlist:add` | `{ url, title? }` | Adds a video link to the shared playlist. Guests in host-only rooms do not trigger a server-side metadata probe; duration is populated as `0` until media is prepared. |
+| `playlist:add` | `{ url, title? }` | Adds a single video link to the shared playlist. |
+| `playlist:addBatch` | `{ roomId, items: [{ url, title }] }` | Adds multiple video URLs at once (TV shows/seasons). Supports automatic title parsing. |
 | `playlist:remove` | `{ itemId }` | Removes an item from the playlist. |
 | `playlist:select` | `{ itemId }` | Selects an item from the playlist for playback. |
-| `chat:send` | `{ text }` | Sends a chat message to the room. |
+| `chat:send` | `{ text }` | Sends a chat message or emoji reaction to the room. |
 
 ### Server to Client
 
@@ -93,10 +94,10 @@ Serves HLS segments and playlists.
 | `rooms:list` | `{ rooms, stats }` | Emitted when room list or global stats update. |
 | `room:joined` | `{ roomId, roomName, hostOnly, isHost, members, playlist, chatHistory, playback }` | Initial room state sent upon joining. |
 | `room:members` | `Member[]` | Emitted whenever viewers join, leave, or change roles. |
-| `sync:state` | `PlaybackState` | Broadcast when video position, play/pause state, or active item changes. |
+| `sync:state` | `PlaybackState` | Broadcast when video position, play/pause state, active item, `subtitleTracks`, or `audioStreams` change. |
 | `media:progress` | `{ progress, status }` | Conversion progress updates ($0-100\%$). |
 | `playlist:updated` | `PlaylistItem[]` | Broadcast whenever the playlist changes. |
-| `chat:message` | `ChatMessage` | Broadcast for new chat messages or system action notes. |
+| `chat:message` | `ChatMessage` | Broadcast for new chat messages, emoji reactions, or system action notes. |
 | `error:notice` | `{ message }` | Transient notification (e.g., host-only lock notice). |
 
 ---

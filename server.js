@@ -207,6 +207,17 @@ io.on('connection', socket => {
     }
   });
 
+  socket.on('playlist:addBatch', async (data, callback) => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    try {
+      const result = await roomManager.addBatchToPlaylist(roomId, data.items, socket);
+      if (typeof callback === 'function') callback(result);
+    } catch (err) {
+      if (typeof callback === 'function') callback({ success: false, error: err.message });
+    }
+  });
+
   socket.on('playlist:remove', (data) => {
     const roomId = socket.data.roomId;
     if (!roomId) return;

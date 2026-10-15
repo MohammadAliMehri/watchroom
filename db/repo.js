@@ -166,9 +166,9 @@ export function createRepo(db) {
         `SELECT r.id, r.owner_id AS ownerId, r.name, r.password_hash AS passwordHash,
                 r.item_index AS itemIndex, r.playing, r.position_sec AS positionSec,
                 r.position_at AS positionAt, r.created_at AS createdAt, r.updated_at AS updatedAt,
-                u.display_name AS ownerName
+                COALESCE(u.display_name, 'Host') AS ownerName
          FROM rooms r
-         JOIN users u ON u.id = r.owner_id
+         LEFT JOIN users u ON u.id = r.owner_id
          WHERE r.id = ?`,
         [id]
       );
@@ -223,9 +223,9 @@ export function createRepo(db) {
         `SELECT r.id, r.owner_id AS ownerId, r.name, r.password_hash AS passwordHash,
                 r.item_index AS itemIndex, r.playing, r.position_sec AS positionSec,
                 r.position_at AS positionAt, r.created_at AS createdAt, r.updated_at AS updatedAt,
-                u.display_name AS ownerName
+                COALESCE(u.display_name, 'Host') AS ownerName
          FROM rooms r
-         JOIN users u ON u.id = r.owner_id`
+         LEFT JOIN users u ON u.id = r.owner_id`
       );
       return rows.map(r => ({ ...r, playing: !!r.playing }));
     },

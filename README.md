@@ -120,6 +120,14 @@ npm run build:web
 ```
 
 ### 3. Run Application
+
+#### Option A: Docker Compose (Recommended)
+```bash
+docker compose up -d
+```
+Runs WatchRoom with Node 22, FFmpeg, persistent SQLite volumes, and auto-restart on port 3000.
+
+#### Option B: Local Node.js
 ```bash
 npm start
 ```

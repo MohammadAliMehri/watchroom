@@ -60,6 +60,23 @@ function getInputProtocolWhitelist(url) {
   return 'file,pipe';
 }
 
+function getNetworkArgs(url) {
+  try {
+    const protocol = new URL(url).protocol;
+    if (protocol === 'http:' || protocol === 'https:') {
+      return [
+        '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        '-headers', 'Accept-Encoding: identity\r\n',
+        '-reconnect', '1',
+        '-reconnect_at_eof', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '5'
+      ];
+    }
+  } catch { }
+  return [];
+}
+
 /**
  * Probe media source using ffprobe
  */
@@ -71,12 +88,14 @@ export function probeSource(url) {
   }
 
   return new Promise((resolve, reject) => {
+    const netArgs = getNetworkArgs(url);
     const proc = spawn('ffprobe', [
       '-v', 'error',
       '-print_format', 'json',
       '-show_format',
       '-show_streams',
       '-protocol_whitelist', getInputProtocolWhitelist(url),
+      ...netArgs,
       url
     ]);
 
@@ -189,18 +208,20 @@ function pickSubtitleStream(probeInfo) {
   return textStreams.find(s => s.language.toLowerCase().includes('en')) || textStreams[0] || null;
 }
 
-function convertToHls(job, probeInfo, audioTrackIndex, subtitleStream, vttFile) {
+function convertToHls(job, probeInfo, audioTrackIndex, subtitleStream, vttFile, textStreams = []) {
   return new Promise((resolve, reject) => {
+    const netArgs = getNetworkArgs(job.url);
     const ffmpegArgs = [
       '-y',
       '-protocol_whitelist', getInputProtocolWhitelist(job.url),
+      ...netArgs,
       '-i', job.url,
       '-map', '0:v:0'
     ];
     if (probeInfo.isH264) {
       ffmpegArgs.push('-c:v', 'copy');
     } else {
-      ffmpegArgs.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23');
+      ffmpegArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-crf', '23');
     }
 
     const chosenAudio = probeInfo.audioStreams[audioTrackIndex] || probeInfo.audioStreams[0];
@@ -215,9 +236,15 @@ function convertToHls(job, probeInfo, audioTrackIndex, subtitleStream, vttFile) 
       path.join(job.outDir, 'index.m3u8')
     );
 
-    // Second output of the same run: one full read of the source yields both HLS and subtitles.
+    // Primary default subtitle track
     if (subtitleStream) {
       ffmpegArgs.push('-map', `0:s:${subtitleStream.index}`, '-c:s', 'webvtt', '-f', 'webvtt', vttFile);
+    }
+
+    // Extract all individual text subtitle streams as sub_{index}.vtt
+    for (const sub of textStreams) {
+      const trackVtt = path.join(job.outDir, `sub_${sub.index}.vtt`);
+      ffmpegArgs.push('-map', `0:s:${sub.index}`, '-c:s', 'webvtt', '-f', 'webvtt', trackVtt);
     }
 
     const proc = spawn('ffmpeg', ffmpegArgs);
@@ -277,9 +304,26 @@ export async function prepareMedia(url, audioTrackIndex = 0, onProgress = null) 
   if (fs.existsSync(playlistFile) && fs.statSync(playlistFile).size > 0) {
     const hasSubtitles = fs.existsSync(vttFile);
     touchJob(key);
+    const subtitleTracks = [];
+    try {
+      const files = fs.readdirSync(outDir);
+      for (const file of files) {
+        if (file.startsWith('sub_') && file.endsWith('.vtt')) {
+          const idx = file.replace('sub_', '').replace('.vtt', '');
+          subtitleTracks.push({
+            id: `sub_${idx}`,
+            label: `Track ${idx}`,
+            src: `/media/${key}/${file}`,
+            default: file === 'sub_0.vtt' || !hasSubtitles
+          });
+        }
+      }
+    } catch { }
+
     return {
       type: 'hls', key, src: `/media/${key}/index.m3u8`,
       subtitles: hasSubtitles ? `/media/${key}/subtitles.vtt` : null,
+      subtitleTracks: subtitleTracks.length > 0 ? subtitleTracks : (hasSubtitles ? [{ id: 'sub_default', label: 'Default', src: `/media/${key}/subtitles.vtt`, default: true }] : []),
       ready: true
     };
   }
@@ -317,11 +361,25 @@ export async function prepareMedia(url, audioTrackIndex = 0, onProgress = null) 
     }
 
     fs.mkdirSync(outDir, { recursive: true });
+    const textSubtitleStreams = probeInfo.subtitleStreams.filter(s => TEXT_SUBTITLE_CODECS.has((s.codec || '').toLowerCase()));
     const subtitleStream = pickSubtitleStream(probeInfo);
-    await convertToHls(job, probeInfo, audioTrackIndex, subtitleStream, vttFile);
+    await convertToHls(job, probeInfo, audioTrackIndex, subtitleStream, vttFile, textSubtitleStreams);
     releaseReencode(job);
 
     const hasSubtitles = !!subtitleStream && fs.existsSync(vttFile) && fs.statSync(vttFile).size > 0;
+
+    const subtitleTracks = textSubtitleStreams.map(s => {
+      const trackVtt = path.join(outDir, `sub_${s.index}.vtt`);
+      const exists = fs.existsSync(trackVtt) && fs.statSync(trackVtt).size > 0;
+      return {
+        id: `sub_${s.index}`,
+        streamIndex: s.streamIndex,
+        language: s.language,
+        label: s.title || `${s.language} (${s.codec.toUpperCase()})`,
+        src: exists ? `/media/${key}/sub_${s.index}.vtt` : null,
+        default: s === subtitleStream
+      };
+    }).filter(t => t.src !== null);
 
     for (const listener of job.listeners) {
       try { listener({ key, progress: 100, status: 'ready' }); } catch { }
@@ -330,6 +388,8 @@ export async function prepareMedia(url, audioTrackIndex = 0, onProgress = null) 
     return {
       type: 'hls', key, src: `/media/${key}/index.m3u8`,
       subtitles: hasSubtitles ? `/media/${key}/subtitles.vtt` : null,
+      subtitleTracks: subtitleTracks.length > 0 ? subtitleTracks : (hasSubtitles ? [{ id: 'sub_default', label: 'Default', src: `/media/${key}/subtitles.vtt`, default: true }] : []),
+      audioStreams: probeInfo.audioStreams,
       ready: true
     };
   }).catch(error => {

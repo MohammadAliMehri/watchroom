@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function createSqliteDriver(dbPath) {
-  const resolvedPath = dbPath || process.env.DB_PATH || '/var/lib/watchroom/watchroom.db';
+  const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+  const defaultPath = path.join(dataDir, 'watchroom.db');
+  const resolvedPath = dbPath || process.env.DB_PATH || defaultPath;
   const dir = path.dirname(resolvedPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
