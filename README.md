@@ -1,226 +1,93 @@
 <div align="center">
 
-# 🎬 WatchRoom v2
-### *Synchronized Video Streaming with On-The-Fly MKV to HLS Conversion*
+# WatchRoom
 
-[![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![FFmpeg](https://img.shields.io/badge/FFmpeg-9.0-007808?logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-violet.svg)](LICENSE)
+### Good stories. Better together.
 
-Watch together in perfect synchronization. WatchRoom v2 adds native support for MKV and other non-browser formats by combining server-side HLS conversion with a dark-first synchronized web player.
+A private watch-together app for long-distance couples, friends, and the “one more episode” people.
 
-[Key Features](#-key-features) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Security Model](#-two-layer-security-model) • [Documentation](#-documentation)
-
----
+React · TypeScript · Node.js · Socket.IO · SQLite · FFmpeg
 
 </div>
 
-## ✨ Key Features
+Create a room, bring a direct movie or series link, and invite your people. WatchRoom synchronizes play, pause, seeking and episode changes, with room chat right beside the player.
 
-- **Any Video Format Supported**:
-  - Direct streaming for `.mp4`, `.webm`, and `.m3u8` directly from source.
-  - Automatic server-side HLS transcoding for **MKV**, **AVI**, **MOV**, **TS**, and multi-codec containers.
-- **Smart Copy Engine**:
-  - If the source is already H.264, video packets are stream-copied (`-c:v copy`) without re-encoding, consuming minimal CPU and completing at network transfer speed.
-  - Audio is converted on the fly to standard stereo AAC (`-c:a aac -ac 2`) to ensure compatibility with AC3, DTS, and multichannel surround formats.
-- **Subtitles & Multi-Audio**:
-  - Embedded subtitle tracks are extracted automatically to WebVTT (`.vtt`) and mounted as native video tracks.
-  - Multi-audio stream detection and track selection.
-- **Two-Layer SSRF & DNS Rebinding Protection**:
-  - **Layer 1 (Application)**: Rejects private, loopback, link-local, carrier NAT, and cloud metadata addresses.
-  - **Layer 2 (Kernel Firewall)**: Linux `iptables` egress guard blocks internal subnets for the service UID while preserving DNS resolution; production conversion fails closed unless this guard is enabled.
-- **Synchronized Playback Engine**:
-  - Real-time room clock with sub-second drift detection.
-  - Visual **Sync Pill**: Displays *"In sync"* (green dot) when within 1.5s, or *"Catching up…"* (amber dot) during correction.
-  - Host-Only Control mode to prevent accidental pauses or seeks by guests.
-- **Real-Time Collaboration**:
-  - Lightweight room chat with system action notes (*"Mia paused at 21:04"*).
-  - Active viewer presence avatars with overflow tags.
-  - SQLite persistence (`node:sqlite`) for rooms, playlists, and message history across restarts.
-- **Polished Dark-First UI**:
-  - Built with React 19, Tailwind CSS v4, Lucide Icons, and HLS.js.
-  - 16:9 responsive video container, keyboard shortcuts, touch gestures, and dynamic CSS gradient posters.
+Read the [watching guide](docs/USAGE.md) for invitations, episode queues, subtitles and common problems.
 
----
+## Your movie night
 
-## 🏛 Architecture
+- **A cozy place to watch:** responsive cinema interface, private password-protected rooms, theater mode, viewer presence, chat and quick reactions.
+- **Invites that work:** copy a room invitation, sign in or create an account, then join with the room password. Invite links never contain passwords.
+- **Movies and series:** add individual media links or paste an entire season into a playlist. Rooms, playlists, accounts and chat persist in SQLite.
+- **Stay together:** synchronized playback, reconnect recovery, paused restart recovery, next-episode controls and an optional host-only playback mode enforced on the server.
+- **MKV in your browser:** FFmpeg converts incompatible containers to HLS, copies H.264 video when possible, and converts audio to stereo AAC.
+- **Your subtitles:** select embedded text subtitle tracks by language, upload local SRT/VTT files, and adjust subtitle size and timing independently of other viewers. Embedded ASS/SRT/WebVTT text is supported; bitmap subtitles such as PGS/DVD are not.
+- **Your own server:** Docker Compose with persistent storage, a real outbound media firewall, non-root app processes, health checks, and an optional Caddy HTTPS profile.
 
-```
-                      ┌────────────────────────────────────────┐
-                      │             Web Browser(s)             │
-                      │  (React 19 + Tailwind + Hls.js Player) │
-                      └──────────────────┬─────────────────────┘
-                                         │ WebSocket / HTTP
-                                         ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                             WatchRoom Server                                │
-│                                                                             │
-│  ┌──────────────────────┐  ┌──────────────────────┐  ┌───────────────────┐  │
-│  │     Express App      │  │   Socket.IO Server   │  │   SQLite (DB)     │  │
-│  │  - Static delivery   │  │  - Room clock sync   │  │  - Rooms          │  │
-│  │  - REST API          │  │  - Presence & Chat   │  │  - Playlists      │  │
-│  │  - /healthz          │  │  - Control events    │  │  - 100 Messages   │  │
-│  └──────────┬───────────┘  └──────────┬───────────┘  └───────────────────┘  │
-│             │                         │                                     │
-│             ▼                         ▼                                     │
-│  ┌────────────────────────────────────────────────┐                         │
-│  │         Security Layer 1 (SSRF Filter)         │                         │
-│  │  - Protocol check (http/https only)            │                         │
-│  │  - DNS resolution & forbidden IP blacklist     │                         │
-│  └────────────────────────┬───────────────────────┘                         │
-│                           │                                                 │
-│                           ▼                                                 │
-│  ┌────────────────────────────────────────────────┐                         │
-│  │           Media Conversion Engine              │                         │
-│  │  - ffprobe analysis (video/audio/subtitles)    │                         │
-│  │  - Smart video copy (-c:v copy if H.264)       │                         │
-│  │  - Re-encode throttle (max 1 concurrent)       │                         │
-│  │  - AAC stereo transcoding                      │                         │
-│  │  - WebVTT subtitle extraction                  │                         │
-│  │  - HLS segmenter (.m3u8 + .ts in /media)       │                         │
-│  └────────────────────────────────────────────────┘                         │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                 Security Layer 2 (watchroom-egress.service)                 │
-│  - Linux iptables firewall rules for 'watchroom' user UID                   │
-│  - Blocks 10/8, 172.16/12, 192.168/16, 169.254/16, 127/8, carrier NAT, IPv6 │
-│  - Protects against DNS rebinding & internal network access                 │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+WatchRoom does not supply a movie catalog or bypass DRM. Bring direct media links you have permission to share. MKV conversion currently completes before playback begins; large files and non-H.264 video can take time.
 
----
+## Deploy on a server
 
-## 🚀 Quick Start
+Requires a Linux Docker host with Compose v2 and iptables/ip6tables support.
 
-### Prerequisites
-- **Node.js 22.13+** (Node.js 24 LTS recommended)
-- **FFmpeg & FFprobe** installed and accessible in system `PATH`
-
-### 1. Installation
-Clone the repository and install dependencies:
 ```bash
 git clone https://github.com/MohammadAliMehri/watchroom.git
 cd watchroom
-
-# Install server dependencies
-npm install
-
-# Install web client dependencies
-npm install --prefix web
+docker compose up --build -d
 ```
 
-### 2. Build Web Frontend
+The app binds to `127.0.0.1:3000`. For public access, point a domain at your server, allow ports 80/443, and:
+
 ```bash
-npm run build:web
+cp .env.example .env
+# Edit DOMAIN and ALLOWED_ORIGINS to match your hostname.
+docker compose --profile https up --build -d
 ```
 
-### 3. Run Application
+Caddy sets up automatic HTTPS. The app retains the existing `./data` and `./media` storage paths. The container needs `NET_ADMIN` during startup to apply the media egress guard, then drops all capabilities before running Node and FFmpeg. Startup fails if protection cannot be installed.
 
-#### Option A: Docker Compose (Recommended)
-```bash
-docker compose up -d
-```
-Runs WatchRoom with Node 22, FFmpeg, persistent SQLite volumes, and auto-restart on port 3000.
+See the [deployment guide](docs/DEPLOYMENT.md) for backups, upgrades, proxy configuration, resource requirements, and troubleshooting. The existing [Ubuntu/Debian systemd installer](install-v3.sh) is also available.
 
-#### Option B: Local Node.js
+## Develop locally
+
+Use Node.js 24 (minimum 22.13) and install `ffmpeg` / `ffprobe` on your PATH.
+
 ```bash
+npm ci
+npm ci --prefix web
 npm start
+# Another terminal:
+npm run dev --prefix web -- --host 127.0.0.1
 ```
-The server will start on [http://localhost:3000](http://localhost:3000).
 
-For local testing of server-side conversion from remote URLs, explicitly opt in with `ALLOW_UNSAFE_MEDIA_FETCHES=true` (PowerShell: `$env:ALLOW_UNSAFE_MEDIA_FETCHES="true"`). This disables the production egress requirement and must not be used on a server exposed to untrusted users. The Linux installer configures the protected production path.
-
-### 4. Run Test Suite
-```bash
-npm test
-```
-Executes automated tests validating SSRF policy, SQLite persistence and password migration, room authorization, and FFmpeg MKV-to-HLS conversion. The test suite generates its media fixture in a temporary directory.
-
----
-
-## 🔒 Two-Layer Security Model
-
-| Layer | Implementation | Defense Scope |
-|---|---|---|
-| **Layer 1: Application** | `src/security.js` | Enforces `http`/`https` protocols and resolves hostnames via DNS to disallow private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`, `169.254.0.0/16`, `100.64.0.0/10`). |
-| **Layer 2: Firewall** | `scripts/watchroom-egress.sh` | Linux `iptables` user-scoped egress filter blocking private subnets and cloud metadata IP (`169.254.169.254`), neutralizing DNS rebinding attacks while permitting DNS resolver `127.0.0.53`. |
-
----
-
-## ⌨️ Desktop Keyboard Shortcuts & Gestures
-
-| Key | Action |
-|---|---|
-| <kbd>Space</kbd> or <kbd>K</kbd> | Play / Pause |
-| <kbd>←</kbd> / <kbd>→</kbd> | Seek backward / forward 10 seconds |
-| <kbd>↑</kbd> / <kbd>↓</kbd> | Volume up / down |
-| <kbd>M</kbd> | Mute / Unmute |
-| <kbd>F</kbd> | Fullscreen toggle |
-| <kbd>N</kbd> | Next playlist item |
-| <kbd>/</kbd> | Focus movie link input field |
-| <kbd>Enter</kbd> (in chat) | Send message |
-| <kbd>Esc</kbd> | Close dialog or exit fullscreen |
-
-**Touch Gestures**:
-- Tap video to show / hide playback controls.
-- Double-tap left or right half of the screen to seek 10 seconds backward or forward.
-- Swipe down to exit fullscreen mode.
-
----
-
----
-
-## ⚙️ Configuration & Environment Variables
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `DATABASE_URL` | *(empty)* | PostgreSQL connection string (`postgres://` or `postgresql://`). Leave empty to use SQLite. |
-| `DB_PATH` | `/var/lib/watchroom/watchroom.db` | SQLite database file location. |
-| `ALLOWED_ORIGINS` | *(empty, same origin only)* | Comma-separated list of allowed origins for Socket.IO and CORS. |
-| `SESSION_DAYS` | `30` | Session cookie and token lifetime in days. |
-| `NODE_ENV` | `production` | Enables `Secure` cookies when requested over HTTPS. |
-| `PORT` | `3000` | HTTP port to listen on. |
-| `HOST` | `0.0.0.0` | Bind host address. |
-| `MEDIA_DIR` | `/var/lib/watchroom/media` | Storage directory for temporary HLS stream files. |
-
----
-
-## 📦 Production Deployment (Ubuntu / Debian)
-
-Deploy WatchRoom in production with the installer script:
+Open Vite on port 5173. API, media and WebSocket requests are proxied to Express on port 3000. No credentials or external database are required.
 
 ```bash
-# HTTP installation (SQLite by default)
-sudo bash install-v3.sh
-
-# HTTPS with automatic Caddy TLS certificate
-sudo DOMAIN=watch.example.com bash install-v3.sh
-
-# PostgreSQL support
-sudo DATABASE_URL=postgres://user:pass@localhost:5432/watchroom bash install-v3.sh
+npm test               # Auth, room permissions, persistence, MKV + subtitles
+npm run lint           # Frontend checks
+npm run build:web      # TypeScript + production build into web/dist
+npm run smoke          # Server health and frontend asset delivery
 ```
 
-This installs system dependencies, creates system user `watchroom`, sets up the database directory at `/var/lib/watchroom`, configures daily automated backups (`/var/backups/watchroom` retaining 14 days), configures `watchroom-egress.service` and `watchroom.service`, and verifies server health.
+Express serves `web/dist` when built, falling back to packaged `public` assets. Generated builds do not modify committed bundles.
 
----
+For local remote-media conversion, the explicit `ALLOW_UNSAFE_MEDIA_FETCHES=true` development override remains available. Keep that mode local and use the protected Docker/systemd deployment for a public server.
 
-## 📚 Documentation
+## Configuration
 
-Detailed technical documentation is available in the [`docs/`](docs/) directory:
+| Variable          | Default             | Purpose                                                           |
+| ----------------- | ------------------- | ----------------------------------------------------------------- |
+| `PORT`            | `3000`              | Express port; Compose publishes it on loopback only               |
+| `DB_PATH`         | `data/watchroom.db` | SQLite path; Docker uses `/app/data/watchroom.db`                 |
+| `MEDIA_DIR`       | `media/`            | Disposable conversion cache; Docker uses `/app/media`             |
+| `ALLOWED_ORIGINS` | unset               | Allowed browser origins; set the exact HTTPS origin in production |
+| `SESSION_DAYS`    | `30`                | Login session lifetime                                            |
+| `DOMAIN`          | `localhost`         | Caddy hostname when the `https` profile is enabled                |
 
-- [Architecture & Design Guide](docs/ARCHITECTURE.md)
-- [Media Conversion Pipeline](docs/MEDIA_PIPELINE.md)
-- [Security & SSRF Guard](docs/SECURITY.md)
-- [REST API & Socket.IO Events](docs/API_AND_EVENTS.md)
-- [Deployment & Operational Runbook](docs/DEPLOYMENT.md)
+Do not manually set `MEDIA_EGRESS_PROTECTED`: the protected startup path sets it only after installing firewall rules.
 
----
+## More detail
 
-## 📄 License
+[Deployment](docs/DEPLOYMENT.md) · [Media pipeline](docs/MEDIA_PIPELINE.md) · [Architecture](docs/ARCHITECTURE.md) · [Security](docs/SECURITY.md) · [API and events](docs/API_AND_EVENTS.md)
 
-This project is licensed under the [MIT License](LICENSE).
+MIT licensed. See [LICENSE](LICENSE).

@@ -12,3 +12,10 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 dist
+web/dist
+web/*.tsbuildinfo
+.env
+.env.*
+
+# Keep database backups out of Git and image build contexts.
+backups/

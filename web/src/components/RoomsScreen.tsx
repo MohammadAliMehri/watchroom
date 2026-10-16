@@ -1,8 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { Film, Plus, Radio, Users, Play, Clock, Sparkles } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  Film,
+  Heart,
+  LockKeyhole,
+  Plus,
+  RefreshCw,
+  Search,
+  Users,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { MovieNight } from "./MovieNight";
+import { getGradientPoster } from "../utils/gradientPoster";
 
 export interface RoomItem {
   id: string;
@@ -12,137 +22,220 @@ export interface RoomItem {
   playing: boolean;
   nowPlaying: string | null;
 }
-
 interface RoomsScreenProps {
   onCreateRoom: () => void;
-  onSelectRoom: (roomId: string) => void;
+  onJoinRoom: () => void;
+  onSelectRoom: (roomId: string) => Promise<void>;
+  displayName: string;
 }
-
-export const RoomsScreen: React.FC<RoomsScreenProps> = ({ onCreateRoom, onSelectRoom }) => {
+export function RoomsScreen({
+  onCreateRoom,
+  onJoinRoom,
+  onSelectRoom,
+  displayName,
+}: RoomsScreenProps) {
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [loading, setLoading] = useState(true);
-
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [joining, setJoining] = useState<string | null>(null);
   const fetchRooms = async () => {
+    setLoading(true);
+    setError("");
     try {
-      const res = await fetch('/api/rooms', { credentials: 'same-origin' });
-      if (res.ok) {
-        const data = await res.json();
-        setRooms(data.rooms || []);
-      }
-    } catch {
-      setRooms([]);
+      const response = await fetch("/api/rooms", {
+        credentials: "same-origin",
+      });
+      if (!response.ok)
+        throw new Error("Could not load your rooms. Please try again.");
+      const data = await response.json();
+      setRooms(data.rooms || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load rooms.");
     } finally {
       setLoading(false);
     }
   };
-
   useEffect(() => {
-    fetchRooms();
+    void fetchRooms();
   }, []);
-
+  const filtered = rooms.filter((room) =>
+    room.name.toLowerCase().includes(search.toLowerCase()),
+  );
+  const openRoom = async (id: string) => {
+    setJoining(id);
+    try {
+      await onSelectRoom(id);
+    } catch {
+      setError("Could not connect to this room. Try again.");
+    } finally {
+      setJoining(null);
+    }
+  };
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-8 pb-12">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-white/10">
+    <div className="dashboard-content">
+      <header className="dashboard-greeting">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="w-4 h-4 text-violet-400" />
-            <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Dashboard</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">My Rooms</h1>
-          <p className="text-xs sm:text-sm text-gray-400 mt-1">
-            Rooms you created or participate in
+          <span className="eyebrow">YOUR LITTLE CORNER OF THE CINEMA</span>
+          <p>
+            Hey, {displayName} <span className="text-[#e9a993]">✦</span>
           </p>
         </div>
-        <Button
-          onClick={onCreateRoom}
-          className="bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs px-4 h-10 shadow-lg shadow-violet-600/30"
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          <span>Create Room</span>
+        <span className="private-label">
+          <LockKeyhole size={13} /> Your space, your people
+        </span>
+      </header>
+      <MovieNight compact onStart={onCreateRoom} onJoin={onJoinRoom} />
+      <div className="dashboard-notes">
+        <span>
+          <Heart size={16} /> A date night. A group hang. One more episode.
+        </span>
+        <span>Bring the movie. We’ll bring you together.</span>
+      </div>
+      <section className="mt-9" aria-labelledby="rooms-title">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">PICK UP WHERE YOU LEFT OFF</span>
+            <h2 id="rooms-title">
+              Your watch rooms{" "}
+              <span className="room-count">{rooms.length}</span>
+            </h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 size-4 text-stone-500" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search your rooms"
+                placeholder="Find a room…"
+                className="pl-9 w-44 sm:w-52"
+              />
+            </div>
+            <Button
+              aria-label="Refresh rooms"
+              variant="ghost"
+              size="icon"
+              disabled={loading}
+              onClick={fetchRooms}
+            >
+              <RefreshCw
+                className={`size-4 ${loading ? "animate-spin" : ""}`}
+              />
+            </Button>
+          </div>
+        </div>
+        {error && (
+          <div role="alert" className="room-error">
+            {error}
+            <Button size="sm" variant="outline" onClick={fetchRooms}>
+              Try again
+            </Button>
+          </div>
+        )}
+        {loading ? (
+          <div className="room-grid" role="status" aria-label="Loading rooms">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="room-skeleton animate-pulse" />
+            ))}
+          </div>
+        ) : !error && rooms.length === 0 ? (
+          <div className="first-room">
+            <div className="first-room-art">
+              <Film size={29} />
+              <span>
+                <Heart size={13} />
+              </span>
+            </div>
+            <div>
+              <h3>Every good night starts with a room.</h3>
+              <p>
+                Create a cozy corner, send an invite, and choose what’s next.
+              </p>
+            </div>
+            <Button onClick={onCreateRoom} className="cinema-primary">
+              <Plus size={16} /> Create your first room
+            </Button>
+          </div>
+        ) : !error && filtered.length === 0 ? (
+          <div className="first-room">
+            <Search size={24} />
+            <div>
+              <h3>No rooms found</h3>
+              <p>Try another name or create something new.</p>
+            </div>
+            <Button variant="outline" onClick={() => setSearch("")}>
+              Clear search
+            </Button>
+          </div>
+        ) : (
+          <div className="room-grid">
+            {filtered.map((room) => (
+              <button
+                key={room.id}
+                disabled={joining !== null}
+                onClick={() => openRoom(room.id)}
+                className="watch-room-card"
+              >
+                <div
+                  className="room-poster"
+                  style={{ background: getGradientPoster(room.name) }}
+                >
+                  <Film size={40} strokeWidth={1} />
+                  <span
+                    className={`room-status ${room.playing ? "is-live" : ""}`}
+                  >
+                    <span />
+                    {room.playing ? "WATCHING NOW" : "READY WHEN YOU ARE"}
+                  </span>
+                  <span className="poster-corner">
+                    <LockKeyhole size={14} />
+                  </span>
+                </div>
+                <div className="room-card-body">
+                  <h3>{room.name}</h3>
+                  <p className="truncate">
+                    {room.nowPlaying || "A fresh playlist is waiting"}
+                  </p>
+                  <div className="room-card-footer">
+                    <span>
+                      <Users size={13} />
+                      {room.memberCount}{" "}
+                      {room.memberCount === 1 ? "person" : "people"}
+                    </span>
+                    <span>
+                      {joining === room.id ? "Joining…" : "Enter room"}
+                      <ArrowRight size={14} />
+                    </span>
+                  </div>
+                </div>
+              </button>
+            ))}
+            {!error && rooms.length > 0 && (
+              <button className="new-room-card" onClick={onCreateRoom}>
+                <Plus size={25} />
+                <strong>A new kind of night</strong>
+                <span>Create another watch room</span>
+              </button>
+            )}
+          </div>
+        )}
+      </section>
+      <div className="dashboard-tip">
+        <span className="feature-icon">
+          <Film size={20} />
+        </span>
+        <div>
+          <strong>Got a whole season lined up?</strong>
+          <p>
+            Add multiple episode links to your playlist. The next episode is
+            just a click away.
+          </p>
+        </div>
+        <Button variant="ghost" onClick={onCreateRoom}>
+          Let’s watch <ArrowRight size={15} />
         </Button>
       </div>
-
-      {/* Content */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-44 rounded-xl bg-[#131722]/60 border border-white/5" />
-          ))}
-        </div>
-      ) : rooms.length === 0 ? (
-        // Spec 9 requirement: Empty state: "You have no rooms yet."
-        <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-white/10 rounded-2xl bg-[#131722]/30">
-          <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-gray-400 mb-4">
-            <Film className="w-6 h-6 text-violet-400" />
-          </div>
-          <h3 className="text-lg font-bold text-white mb-1">You have no rooms yet.</h3>
-          <p className="text-xs text-gray-400 max-w-sm mb-6">
-            Create your first room to invite friends, add movies, and watch in synchronized real-time.
-          </p>
-          <Button
-            onClick={onCreateRoom}
-            className="bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs px-4 h-9"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            <span>Create a Room</span>
-          </Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {rooms.map((room) => (
-            <Card
-              key={room.id}
-              onClick={() => onSelectRoom(room.id)}
-              className="bg-[#131722]/90 border-white/10 hover:border-violet-500/50 hover:bg-[#1a2030] transition-all cursor-pointer group rounded-xl overflow-hidden shadow-xl"
-            >
-              <CardContent className="p-5 flex flex-col justify-between h-full space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[10px] text-gray-500 bg-white/5 px-2 py-0.5 rounded">
-                      #{room.id}
-                    </span>
-                    {room.playing ? (
-                      <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 animate-pulse">
-                        <Radio className="w-3 h-3 mr-1" />
-                        <span>Playing</span>
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-gray-400 border-white/10 text-[10px] px-2 py-0.5">
-                        <Clock className="w-3 h-3 mr-1" />
-                        <span>Idle</span>
-                      </Badge>
-                    )}
-                  </div>
-
-                  <h3 className="text-base font-bold text-white group-hover:text-violet-300 transition-colors line-clamp-1">
-                    {room.name}
-                  </h3>
-
-                  <p className="text-xs text-gray-400 line-clamp-1">
-                    {room.nowPlaying ? (
-                      <span className="flex items-center gap-1.5 text-gray-300">
-                        <Play className="w-3 h-3 text-violet-400 shrink-0" />
-                        <span>{room.nowPlaying}</span>
-                      </span>
-                    ) : (
-                      'No media active'
-                    )}
-                  </p>
-                </div>
-
-                <div className="pt-3 border-t border-white/5 flex items-center justify-between text-xs text-gray-400">
-                  <div className="flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-gray-500" />
-                    <span>{room.memberCount} {room.memberCount === 1 ? 'member' : 'members'}</span>
-                  </div>
-                  <span className="text-[11px] text-gray-500">Host: {room.ownerName}</span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
     </div>
   );
-};
+}

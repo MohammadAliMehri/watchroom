@@ -1,5 +1,5 @@
 [Unit]
-Description=WatchRoom v2 Egress Firewall Guard
+Description=WatchRoom Egress Firewall Guard
 Before=watchroom.service
 After=network.target
 
