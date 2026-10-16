@@ -12,7 +12,9 @@ cd watchroom
 sudo bash deploy.sh
 ```
 
-The setup installs Docker Engine/Compose if missing, asks whether you will use a domain or public IP, writes a private `.env`, builds the app, starts the matching Caddy proxy, and checks `/healthz`. Domain mode uses Caddy's automatic certificate issuance and renewal; the DNS name must resolve to the server, and ports 80/443 must be reachable from the internet. IP mode serves HTTP on port 80 only. Publicly trusted TLS for IP addresses is not configured, so use a domain when login and room traffic need encryption. The script can add UFW rules when UFW is already active; cloud firewall rules remain the operator's responsibility.
+The setup installs Docker Engine/Compose if missing, asks whether you will use a domain or public IP, validates that a domain resolves, writes a private `.env`, builds the app, starts the matching Caddy proxy, and checks app and proxy readiness. If an `.env` already exists, the script keeps a timestamped backup before updating it. Domain mode uses Caddy's automatic certificate issuance and renewal; the DNS name must resolve to the server, and ports 80/443 must be reachable from the internet. IP mode serves HTTP on port 80 only. Publicly trusted TLS for IP addresses is not configured, so use a domain when login and room traffic need encryption. The script can add UFW rules when UFW is already active; cloud firewall rules remain the operator's responsibility.
+
+If setup stops, it prints the Compose service status and a `docker compose logs` command for the deployment directory. Fix the reported issue and run `sudo bash deploy.sh` again; the script preserves `data/`, `media/`, Caddy certificates, and the previous `.env` as a backup.
 
 Run the script from the cloned repository directory. It preserves an existing `.env` as a timestamped backup before selecting a new public origin. Re-running it rebuilds the app and reconfigures the chosen access mode while retaining `data/`, `media/`, and Caddy's certificate volume.
 
@@ -126,6 +128,7 @@ For local remote-media conversion only, the existing `ALLOW_UNSAFE_MEDIA_FETCHES
 | Queue-add request times out                         | Check the queue before repeating the request; a client timeout does not roll back server work                                                                                         |
 | Build containers fail to resolve a corporate proxy  | Configure build-container DNS/host resolution for that proxy; the app runtime's resolver is a separate setting                                                                        |
 | Package install reports a private/self-signed CA    | Supply your organization's trusted CA rather than disabling TLS verification                                                                                                          |
+| `deploy.sh` stops during startup                     | Check the printed `docker compose ps` status and run the suggested `docker compose logs --tail=80` command from the repository directory; check port use and cloud firewall rules |
 
 For a build proxy, Docker's predefined `HTTP_PROXY`/`HTTPS_PROXY` build arguments can use existing environment variables. The Dockerfile accepts an optional `build_ca` BuildKit secret for a trusted certificate file during npm installation:
 
@@ -144,7 +147,8 @@ Local `npm start` does not automatically load `.env`; export runtime variables o
 ## Before inviting friends
 
 - Confirm `/healthz` returns `status: ok` and `db: connected` on the intended hostname.
-- Use two browsers to test signup, a protected room, invitation, wrong-password rejection, chat and host-only playback.
+- Use two browser profiles: create a host-only room, invite a second account, confirm a wrong password is rejected, join with the right password, and exchange a chat message. This checks signup, invite retention, room access and cross-viewer chat.
+- Test host-only playback controls with a media source reachable from the actual server network.
 - Test one direct source from both browsers and one MKV through the server's actual network. Confirm embedded text subtitles and at least one audio track.
 - Expect complete conversion before MKV playback; test a realistic file size, not just a tiny fixture.
 - Back up SQLite and verify restore. Keep the documented single-instance deployment until shared state/storage is implemented.

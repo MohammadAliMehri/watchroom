@@ -14,6 +14,8 @@ Create a room, bring a direct movie or series link, and invite your people. Watc
 
 Read the [watching guide](docs/USAGE.md) for invitations, episode queues, subtitles and common problems.
 
+![WatchRoom home page](docs/images/watchroom-home.png)
+
 ## Your movie night
 
 - **A cozy place to watch:** responsive cinema interface, private password-protected rooms, theater mode, viewer presence, chat and quick reactions.
@@ -36,7 +38,9 @@ cd watchroom
 sudo bash deploy.sh
 ```
 
-Choose a domain for automatic HTTPS through Caddy, or an IP address for HTTP. For domain setup, point DNS to your server and allow inbound TCP 80/443 in your cloud firewall before running the script. The script installs Docker when needed, configures the right reverse proxy, builds the app and checks its health. IP mode requires inbound TCP 80 and is unencrypted; use a domain for trusted TLS. The cloud provider firewall may need separate configuration.
+Choose a domain for automatic HTTPS through Caddy, or an IP address for HTTP. For domain setup, point DNS to your server and allow inbound TCP 80/443 in your cloud firewall before running the script. The script installs Docker when needed, validates domain DNS, configures the matching reverse proxy, builds the app, and checks both app and proxy readiness. If a step fails, it prints container status and the command to inspect deployment logs. An existing `.env` is backed up before settings are replaced. IP mode requires inbound TCP 80 and is unencrypted; use a domain for trusted TLS. The cloud provider firewall may need separate configuration.
+
+After setup, create an account and a room, invite a second account, and confirm both viewers can exchange chat messages. See the [two-person watch guide](docs/USAGE.md) and [deployment checks](docs/DEPLOYMENT.md#before-inviting-friends).
 
 The interactive script is the recommended public deployment path. For local development or an advanced existing reverse proxy, manual Compose configuration remains available. For automatic HTTPS with Compose, point a domain at your server, allow ports 80/443, and:
 

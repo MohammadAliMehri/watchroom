@@ -7,6 +7,8 @@
 3. Open **Invite friends**, copy the link and send it to your partner or friends. Share the password separately.
 4. Your friend signs in or creates an account from the invite, then enters the room password. The room ID is retained through signup; the password is never included in the link.
 
+To confirm both accounts joined the same room, send a short message from each browser and check that it appears in both chat panels.
+
 You can also use **Join by ID**. Existing room members appear in **Your watch rooms**, but non-owner viewers must still provide the room password when joining a password-protected room again. Owners can rejoin their rooms without entering that password.
 
 ## Bring a movie or a whole season

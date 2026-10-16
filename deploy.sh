@@ -26,8 +26,21 @@ fi
 command -v apt-get >/dev/null || fail "This installer currently supports Ubuntu and Debian servers."
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+APP_DIR="$SCRIPT_DIR"
 cd "$APP_DIR"
+
+on_deploy_error() {
+  local status=$?
+  local line="${BASH_LINENO[0]:-unknown}"
+  trap - ERR
+  printf '\nWatchRoom deployment stopped at line %s (exit %s).\n' "$line" "$status" >&2
+  if command -v docker >/dev/null 2>&1 && [[ -f "$APP_DIR/docker-compose.yml" ]]; then
+    docker compose ps >&2 || true
+    printf 'For details, run: cd %q && docker compose logs --tail=80\n' "$APP_DIR" >&2
+  fi
+  exit "$status"
+}
+trap on_deploy_error ERR
 
 if ! command -v docker >/dev/null 2>&1; then
   say "Installing Docker Engine and Compose from the Ubuntu/Debian package repositories..."
@@ -144,8 +157,10 @@ say "Building WatchRoom and starting the ${profile} deployment..."
 docker compose stop caddy caddy-http >/dev/null 2>&1 || true
 if [[ "$profile" == https ]]; then
   docker compose --profile https up -d --build
+  proxy_service="caddy"
 else
   docker compose --profile http up -d --build
+  proxy_service="caddy-http"
 fi
 
 say "Checking application health..."
@@ -160,6 +175,33 @@ for attempt in $(seq 1 30); do
   }
   sleep 2
 done
+
+say "Checking the reverse proxy..."
+proxy_id=""
+for attempt in $(seq 1 15); do
+  proxy_id="$(docker compose ps --status running -q "$proxy_service" 2>/dev/null || true)"
+  [[ -n "$proxy_id" ]] && break
+  sleep 1
+done
+if [[ -z "$proxy_id" ]]; then
+  docker compose logs --tail=80 "$proxy_service" >&2 || true
+  fail "The reverse proxy did not start. Check port availability and the logs above."
+fi
+
+if [[ "$profile" == http ]]; then
+  proxy_healthy=false
+  for attempt in $(seq 1 15); do
+    if curl --fail --silent --max-time 3 http://127.0.0.1/healthz >/dev/null; then
+      proxy_healthy=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$proxy_healthy" != true ]]; then
+    docker compose logs --tail=80 "$proxy_service" >&2 || true
+    fail "The HTTP proxy did not return a healthy response. Check the logs above."
+  fi
+fi
 
 printf '\nWatchRoom is running at: %s\n' "$public_url"
 if [[ "$profile" == https ]]; then
