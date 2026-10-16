@@ -28,15 +28,17 @@ WatchRoom does not supply a movie catalog or bypass DRM. Bring direct media link
 
 ## Deploy on a server
 
-Requires a Linux Docker host with Compose v2 and iptables/ip6tables support.
+On a fresh Ubuntu or Debian server, clone the repository and run the interactive setup:
 
 ```bash
 git clone https://github.com/MohammadAliMehri/watchroom.git
 cd watchroom
-docker compose up --build -d
+sudo bash deploy/setup.sh
 ```
 
-The app binds to `127.0.0.1:3000`. For public access, point a domain at your server, allow ports 80/443, and:
+Choose a domain for automatic HTTPS through Caddy, or an IP address for HTTP. For domain setup, point DNS to your server and allow inbound TCP 80/443 in your cloud firewall before running the script. The script installs Docker when needed, configures the right reverse proxy, builds the app and checks its health. IP mode requires inbound TCP 80 and is unencrypted; use a domain for trusted TLS. The cloud provider firewall may need separate configuration.
+
+The manual Compose path remains available. For public access, point a domain at your server, allow ports 80/443, and:
 
 ```bash
 cp .env.example .env

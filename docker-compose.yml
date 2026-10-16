@@ -44,6 +44,18 @@ services:
       watchroom:
         condition: service_healthy
 
+  caddy-http:
+    image: caddy:2-alpine
+    profiles: [http]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/Caddyfile.http:/etc/caddy/Caddyfile:ro
+    depends_on:
+      watchroom:
+        condition: service_healthy
+
 volumes:
   caddy_data:
   caddy_config:

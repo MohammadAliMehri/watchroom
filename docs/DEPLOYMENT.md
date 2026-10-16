@@ -2,6 +2,20 @@
 
 WatchRoom runs on a Linux server with Docker Engine and Docker Compose v2. Use a public DNS name for automatic HTTPS. The web interface, SQLite database, room chat, FFmpeg and subtitle extraction run together; no external database or API keys are required.
 
+## Interactive Ubuntu/Debian setup
+
+On a fresh Ubuntu or Debian server, open inbound TCP port 80 for HTTP and TCP 443 for HTTPS in the cloud provider firewall. For automatic HTTPS, point a public DNS A record (and an AAAA record only when IPv6 is reachable) at the server. Then run:
+
+```bash
+git clone https://github.com/MohammadAliMehri/watchroom.git
+cd watchroom
+sudo bash deploy/setup.sh
+```
+
+The setup installs Docker Engine/Compose if missing, asks whether you will use a domain or public IP, writes a private `.env`, builds the app, starts the matching Caddy proxy, and checks `/healthz`. Domain mode uses Caddy's automatic certificate issuance and renewal; the DNS name must resolve to the server, and ports 80/443 must be reachable from the internet. IP mode serves HTTP on port 80 only. Publicly trusted TLS for IP addresses is not configured, so use a domain when login and room traffic need encryption. The script can add UFW rules when UFW is already active; cloud firewall rules remain the operator's responsibility.
+
+Run the script from the cloned repository directory. It preserves an existing `.env` as a timestamped backup before selecting a new public origin. Re-running it rebuilds the app and reconfigures the chosen access mode while retaining `data/`, `media/`, and Caddy's certificate volume.
+
 ## Start locally
 
 ```bash
