@@ -10,6 +10,8 @@ Movie night with your favorite people, wherever you are.
 
 </div>
 
+<p align="center"><a href="https://mohammadalimehri.github.io/watchroom/">Explore the WatchRoom project page ↗</a></p>
+
 <p align="center">
   <img src="docs/images/watchroom-home.png" alt="WatchRoom home page: a calm, cinematic space to plan a movie night together" width="100%">
 </p>
