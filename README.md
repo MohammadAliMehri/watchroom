@@ -33,12 +33,12 @@ On a fresh Ubuntu or Debian server, clone the repository and run the interactive
 ```bash
 git clone https://github.com/MohammadAliMehri/watchroom.git
 cd watchroom
-sudo bash deploy/setup.sh
+sudo bash deploy.sh
 ```
 
 Choose a domain for automatic HTTPS through Caddy, or an IP address for HTTP. For domain setup, point DNS to your server and allow inbound TCP 80/443 in your cloud firewall before running the script. The script installs Docker when needed, configures the right reverse proxy, builds the app and checks its health. IP mode requires inbound TCP 80 and is unencrypted; use a domain for trusted TLS. The cloud provider firewall may need separate configuration.
 
-The manual Compose path remains available. For public access, point a domain at your server, allow ports 80/443, and:
+The interactive script is the recommended public deployment path. For local development or an advanced existing reverse proxy, manual Compose configuration remains available. For automatic HTTPS with Compose, point a domain at your server, allow ports 80/443, and:
 
 ```bash
 cp .env.example .env
@@ -48,7 +48,7 @@ docker compose --profile https up --build -d
 
 Caddy sets up automatic HTTPS. The app retains the existing `./data` and `./media` storage paths. The container needs `NET_ADMIN` during startup to apply the media egress guard, then drops all capabilities before running Node and FFmpeg. Startup fails if protection cannot be installed.
 
-See the [deployment guide](docs/DEPLOYMENT.md) for backups, upgrades, proxy configuration, resource requirements, and troubleshooting. The existing [Ubuntu/Debian systemd installer](install-v3.sh) is also available.
+See the [deployment guide](docs/DEPLOYMENT.md) for backups, upgrades, proxy configuration, resource requirements, and troubleshooting.
 
 ## Develop locally
 
@@ -73,7 +73,7 @@ npm run smoke          # Server health and frontend asset delivery
 
 Express serves `web/dist` when built, falling back to packaged `public` assets. Generated builds do not modify committed bundles.
 
-For local remote-media conversion, the explicit `ALLOW_UNSAFE_MEDIA_FETCHES=true` development override remains available. Keep that mode local and use the protected Docker/systemd deployment for a public server.
+For local remote-media conversion, the explicit `ALLOW_UNSAFE_MEDIA_FETCHES=true` development override remains available. Keep that mode local and use the protected Docker deployment for a public server.
 
 ## Configuration
 

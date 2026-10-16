@@ -24,8 +24,6 @@ The guard uses **DROP**, which avoids requiring the optional IPv6 REJECT kernel 
 
 **Docker Compose:** the entrypoint starts as root, discovers the resolver from `/etc/resolv.conf`, applies IPv4 and IPv6 firewall rules, assigns existing data/media files to the service UID, sets the assertion and removes the unsafe override. It then uses `setpriv` to run Node as `watchroom` with no retained capabilities and `no_new_privs`. Compose grants `NET_ADMIN` for the initialization step. Missing capability or failed firewall installation stops startup. Root-only health probes can reach loopback; the app user cannot initiate a new loopback connection.
 
-**Systemd installer:** `watchroom.service` runs as the dedicated user and requires `watchroom-egress.service`. The firewall unit runs first. The service sets the assertion only for this protected deployment. The guard defaults to resolver `127.0.0.53`; configure `DNS_RESOLVER` for hosts using another IPv4 resolver.
-
 Do not set `MEDIA_EGRESS_PROTECTED` manually in an unprotected deployment or remove the required capability simply to silence a startup error. Rootless Docker and managed hosts without network-administration support need a separately reviewed infrastructure policy/startup path. The standard owner-based rules intentionally prevent private-network source URLs, including a database or media server on a private address.
 
 TLS/package signature/checksum verification should remain enabled. Corporate build proxies can provide a trusted CA through the optional BuildKit `build_ca` secret; it is used for package installation and is not baked into the final image. No raw credentials belong in the repository, `.env.example`, image build arguments or saved setup instructions.

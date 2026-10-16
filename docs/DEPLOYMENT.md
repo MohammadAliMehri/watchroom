@@ -9,7 +9,7 @@ On a fresh Ubuntu or Debian server, open inbound TCP port 80 for HTTP and TCP 44
 ```bash
 git clone https://github.com/MohammadAliMehri/watchroom.git
 cd watchroom
-sudo bash deploy/setup.sh
+sudo bash deploy.sh
 ```
 
 The setup installs Docker Engine/Compose if missing, asks whether you will use a domain or public IP, writes a private `.env`, builds the app, starts the matching Caddy proxy, and checks `/healthz`. Domain mode uses Caddy's automatic certificate issuance and renewal; the DNS name must resolve to the server, and ports 80/443 must be reachable from the internet. IP mode serves HTTP on port 80 only. Publicly trusted TLS for IP addresses is not configured, so use a domain when login and room traffic need encryption. The script can add UFW rules when UFW is already active; cloud firewall rules remain the operator's responsibility.
@@ -26,13 +26,11 @@ curl --fail http://127.0.0.1:3000/healthz
 docker compose logs -f watchroom
 ```
 
-HTTP binds to the server's loopback interface by default. For remote testing, use `ssh -L 3000:127.0.0.1:3000 user@server` and open port 3000 on your own machine. For friends outside your network, enable HTTPS below.
+HTTP binds to the server's loopback interface by default. For remote testing, use `ssh -L 3000:127.0.0.1:3000 user@server` and open port 3000 on your own machine. For friends outside your network, use the interactive setup above.
 
-## Public server with automatic HTTPS
+## Advanced manual configuration
 
-1. Point an A record (and an AAAA record only if IPv6 works) for your hostname at the server.
-2. Allow inbound TCP 80 and 443 in your server firewall. UDP 443 is optional for HTTP/3.
-3. Copy the public configuration template and replace both example hostnames:
+For a normal public install, use `sudo bash deploy.sh` and follow its prompts. If you already manage Docker and want to configure the proxy yourself, copy the template and set the same public origin for both values:
 
 ```bash
 cp .env.example .env
@@ -41,7 +39,7 @@ cp .env.example .env
 docker compose --profile https up --build -d
 ```
 
-Caddy obtains and renews TLS certificates and proxies HTTP and Socket.IO WebSockets to the app. Visit `https://watch.your-domain.com`, create an account and a room, paste a direct media URL into the playlist, and use **Invite friends**. Share the room password separately. Each viewer chooses their own subtitles; playback and audio-track changes are shared by the room.
+Caddy obtains and renews TLS certificates and proxies HTTP and Socket.IO WebSockets to the app. For this manual path, make sure DNS points to the server and inbound TCP ports 80 and 443 are open. Visit your HTTPS origin after startup, create an account and a room, paste a direct media URL into the playlist, and use **Invite friends**. Share the room password separately. Each viewer chooses their own subtitles; playback and audio-track changes are shared by the room.
 
 If you already have a reverse proxy, omit the HTTPS profile and proxy to `127.0.0.1:3000`. Preserve the Host header, forward the original HTTPS scheme, and support WebSocket upgrades. Set `ALLOWED_ORIGINS` to your exact public origin.
 
@@ -51,7 +49,7 @@ The container starts as root only to install user-specific IPv4 and IPv6 egress 
 
 Startup fails if firewall installation fails. Do not bypass it or set `MEDIA_EGRESS_PROTECTED=true` by hand. Requests to private, loopback, link-local, multicast, and metadata addresses are blocked. Only DNS to the configured resolver is allowed before those destination blocks. `DNS_RESOLVER` is discovered from the container's `/etc/resolv.conf`; override it only if your infrastructure needs a different resolver.
 
-A failed protected startup appears in `docker compose logs watchroom`. On platforms without `NET_ADMIN`, use a host firewall with the documented systemd installer instead, or provide an equivalent infrastructure egress policy and a separately reviewed container entrypoint.
+A failed protected startup appears in `docker compose logs watchroom`. The standard deployment requires a Docker host that supports `NET_ADMIN`, IPv4/IPv6 tables and iptables-compatible firewall rules. Managed platforms without those capabilities need a separately reviewed infrastructure egress policy and startup path.
 
 ## Formats, subtitles and capacity
 
@@ -82,11 +80,10 @@ Upgrade without removing data:
 
 ```bash
 git pull --ff-only
-docker compose --profile https up --build -d
-curl --fail https://watch.your-domain.com/healthz
+sudo bash deploy.sh
 ```
 
-Use the same Compose project directory/name so Docker reuses the Caddy volumes. SQLite migrations run automatically at startup. Back up before upgrades, especially before returning to an older app version.
+Choose the same domain/IP mode when prompted. The script rebuilds the app and retains the Caddy certificate volume and `data/` / `media/` directories. SQLite migrations run automatically at startup. Back up before upgrades, especially before returning to an older app version.
 
 ## Development without Docker
 
@@ -112,18 +109,6 @@ npm run smoke
 The frontend builds into ignored `web/dist/`, which Express prefers over the legacy `public/` assets. Docker copies that build into its packaged `public/` directory. Building never rewrites committed frontend bundles. No secrets are needed for the local workflow.
 
 For local remote-media conversion only, the existing `ALLOW_UNSAFE_MEDIA_FETCHES=true` development override is available outside production. Do not expose that mode to untrusted users. Local file conversion is covered by automated FFmpeg fixture tests without that override.
-
-## Systemd alternative
-
-The existing Ubuntu/Debian installer installs dependencies, builds the frontend, runs the app as the `watchroom` user, configures the firewall service and adds daily SQLite backups. With a public hostname it also configures Caddy:
-
-```bash
-sudo DOMAIN=watch.your-domain.com bash install-v3.sh
-sudo systemctl status watchroom watchroom-egress
-sudo journalctl -u watchroom -f
-```
-
-This changes system packages and systemd configuration; run it on the server you intend to host. The full installer has not been executed inside the cloud development workspace. SQLite is the documented default; optional PostgreSQL code/installation exists but is not covered by the validated Compose workflow.
 
 ## Troubleshooting
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# WatchRoom v2 Egress Guard (Firewall Check)
+# WatchRoom container egress guard
 # Blocks the 'watchroom' user from reaching private/internal networks to prevent SSRF and DNS rebinding
 set -euo pipefail
 

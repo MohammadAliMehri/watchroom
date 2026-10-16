@@ -40,7 +40,7 @@ The build runs `tsc -b` and writes `web/dist/`. Express prefers that build to le
 | Reusable Radix/Tailwind primitives                         | `src/components/ui/`                              |
 | Theme, cinema illustration and responsive styles           | `src/index.css`                                   |
 
-Component filenames above live in `src/components/` unless a full path is shown. `Home.tsx` and `Sidebar.tsx` are older components outside the current main navigation. Do not assume changing an unused legacy component changes the active dashboard.
+Component filenames above live in `src/components/` unless a full path is shown. `App.tsx` owns the current signed-in navigation and dashboard flow.
 
 ## Interaction rules
 
