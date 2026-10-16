@@ -39,6 +39,7 @@ export class RoomManager {
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
         members: new Map(), // userId -> { userId, name, avatar, socketIds: Set<string> }
+        viewerBuffering: new Map(), // socketId -> { userId, name, since }
         playback: {
           currentItem,
           itemIndex: currentItem ? r.itemIndex : -1,
@@ -198,6 +199,7 @@ export class RoomManager {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       members: new Map(),
+      viewerBuffering: new Map(),
       playback: {
         currentItem: null,
         itemIndex: -1,
@@ -244,6 +246,7 @@ export class RoomManager {
         createdAt: dbRoom.createdAt,
         updatedAt: dbRoom.updatedAt,
         members: new Map(),
+        viewerBuffering: new Map(),
         playback: {
           currentItem: null,
           itemIndex: dbRoom.itemIndex,
@@ -340,6 +343,7 @@ export class RoomManager {
         avatar: m.avatar,
         isHost: m.userId === room.ownerId,
       })),
+      bufferingViewers: this.getBufferingViewers(room),
       playlist,
       chatHistory: chatHistory.map((c) => ({
         id: c.id,
@@ -417,6 +421,9 @@ export class RoomManager {
     }
 
     const userId = socket.data.userId;
+    if (room.viewerBuffering.delete(socket.id)) {
+      this.broadcastViewerBuffering(roomId);
+    }
     if (userId && room.members.has(userId)) {
       const memberEntry = room.members.get(userId);
       memberEntry.socketIds.delete(socket.id);
@@ -447,6 +454,51 @@ export class RoomManager {
       count: names.length,
       names,
     });
+  }
+
+  getBufferingViewers(room) {
+    const viewers = new Map();
+    for (const state of room.viewerBuffering.values()) {
+      if (!viewers.has(state.userId)) {
+        viewers.set(state.userId, {
+          id: state.userId,
+          name: state.name,
+          since: state.since,
+        });
+      }
+    }
+    return [...viewers.values()];
+  }
+
+  broadcastViewerBuffering(roomId) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    this.io.to(roomId).emit("room:buffering", this.getBufferingViewers(room));
+  }
+
+  async setViewerBuffering(socket, buffering) {
+    const roomId = socket.data.roomId;
+    const user = socket.data.user;
+    const room = this.rooms.get(roomId);
+    if (!room || !user || !room.members.has(user.id))
+      throw new Error("Join the room before reporting playback status.");
+    if (typeof buffering !== "boolean")
+      throw new Error("Buffering status must be true or false.");
+
+    if (buffering) {
+      if (!room.viewerBuffering.has(socket.id)) {
+        room.viewerBuffering.set(socket.id, {
+          userId: user.id,
+          name: user.displayName,
+          since: Date.now(),
+        });
+      } else return { success: true, unchanged: true };
+    } else {
+      if (!room.viewerBuffering.delete(socket.id))
+        return { success: true, unchanged: true };
+    }
+    this.broadcastViewerBuffering(roomId);
+    return { success: true };
   }
 
   broadcastSyncState(roomId) {
@@ -616,6 +668,7 @@ export class RoomManager {
     this.broadcastSyncState(roomId);
     await this.savePlaybackImmediate(roomId);
 
+    let streamPublished = false;
     try {
       await validateUrl(url);
       if (!isCurrent()) return superseded();
@@ -629,6 +682,25 @@ export class RoomManager {
             progress: progressData.progress,
             status: progressData.status,
           });
+        },
+        (preview) => {
+          if (!isCurrent() || streamPublished) return;
+          streamPublished = true;
+          Object.assign(room.playback, {
+            isPreparing: false,
+            mediaSrc: preview.src,
+            mediaType: preview.type,
+            mediaKey: preview.key,
+            subtitles: null,
+            subtitleTracks: [],
+            audioStreams: preview.audioStreams || [],
+            prepareError: null,
+            isPlaying: resumePlaying,
+            updatedAt: Date.now(),
+          });
+          this.broadcastSyncState(roomId);
+          this.broadcastRoomList();
+          void this.savePlaybackImmediate(roomId);
         },
       );
       if (!isCurrent()) {
@@ -646,7 +718,7 @@ export class RoomManager {
         mediaKey: result.key || null,
         prepareProgress: 100,
         prepareError: null,
-        isPlaying: resumePlaying,
+        isPlaying: streamPublished ? room.playback.isPlaying : resumePlaying,
         updatedAt: Date.now(),
       });
       await this.savePlaybackImmediate(roomId);
@@ -658,7 +730,10 @@ export class RoomManager {
     } catch (err) {
       if (!isCurrent()) return superseded();
       room.preparingMediaKey = null;
+      if (streamPublished) this.clearPreparedMedia(room);
       room.playback.isPreparing = false;
+      room.playback.isPlaying = false;
+      room.playback.updatedAt = Date.now();
       room.playback.prepareError = err.message;
       this.broadcastSyncState(roomId);
       this.io.to(roomId).emit("media:error", { message: err.message });

@@ -7,6 +7,8 @@ import {
   MoreVertical,
   Edit2,
   Trash2,
+  Share2,
+  Info,
 } from "lucide-react";
 import { AvatarStack } from "./AvatarStack";
 import type { Member } from "../hooks/useRoom";
@@ -56,6 +58,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [shareOpen, setShareOpen] = useState(false);
+  const [roomInfoOpen, setRoomInfoOpen] = useState(false);
   const inviteUrl = new URL(window.location.pathname, window.location.origin);
   inviteUrl.searchParams.set("room", roomId);
   const copyInvite = async () => {
@@ -67,6 +70,24 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
       setErrorMsg(
         "Clipboard unavailable. Select and copy the invite link below.",
       );
+    }
+  };
+
+  const shareInvite = async () => {
+    if (typeof navigator.share !== "function") {
+      await copyInvite();
+      return;
+    }
+    try {
+      await navigator.share({
+        title: `Join ${roomName} on WatchRoom`,
+        text: "Join me for a movie night on WatchRoom.",
+        url: inviteUrl.href,
+      });
+      setErrorMsg(null);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setErrorMsg("Sharing is unavailable. You can copy the invite link instead.");
     }
   };
 
@@ -159,10 +180,11 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                     ? "You are the host"
                     : "Only the host can control playback"
                 }
-                className="hidden border-violet-500/40 bg-violet-950/60 px-2 py-0.5 text-[11px] text-violet-300 md:flex"
+                aria-label={isHost ? "Host-only playback controls enabled" : "Only the host can control playback"}
+                className="flex border-violet-500/40 bg-violet-950/60 px-2 py-0.5 text-[11px] text-violet-300"
               >
                 <Shield className="w-3 h-3 text-violet-400" />
-                <span>Host controls</span>
+                <span className="hidden sm:inline">Host controls</span>
               </Badge>
             )}
           </div>
@@ -189,6 +211,16 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
               <Copy className="w-3.5 h-3.5" />
             )}
             <span className="hidden sm:inline">Invite friends</span>
+          </Button>
+          <Button
+            onClick={() => setRoomInfoOpen(true)}
+            aria-label="Room permissions and privacy"
+            title="Room permissions and privacy"
+            variant="ghost"
+            size="icon"
+            className="text-gray-400 hover:bg-white/5 hover:text-white"
+          >
+            <Info className="h-4 w-4" />
           </Button>
 
           {/* Owner Menu: Rename and Delete (Spec 10) */}
@@ -300,6 +332,51 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             {copied ? <Check size={16} /> : <Copy size={16} />}
             {copied ? "Link copied" : "Copy invitation"}
           </Button>
+          {typeof navigator.share === "function" && (
+            <Button onClick={shareInvite} variant="secondary" className="w-full">
+              <Share2 size={16} />
+              Share invite
+            </Button>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={roomInfoOpen} onOpenChange={setRoomInfoOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>How this room works</DialogTitle>
+            <DialogDescription>
+              A few details to keep your movie night clear and comfortable.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 text-sm text-gray-300">
+            <section>
+              <h3 className="mb-1 font-semibold text-white">Playback controls</h3>
+              <p>
+                {hostOnly
+                  ? "Only the host can select a movie, control playback, and change audio. Everyone can suggest and reorder upcoming movies. Members can remove their own suggestions; the host can remove any item."
+                  : "Everyone in the room can select a movie and control shared playback. Members can reorder the queue and remove their own suggestions; the host can remove any item."}
+              </p>
+            </section>
+            <section>
+              <h3 className="mb-1 font-semibold text-white">Invites and passwords</h3>
+              <p>The invite link contains the room ID only. Share the room password separately.</p>
+            </section>
+            <section>
+              <h3 className="mb-1 font-semibold text-white">Media and chat</h3>
+              <p>
+                Converted streams use temporary storage on the WatchRoom server. The room keeps up to 200 recent chat messages for its members. Direct links play from their media host; only add sources you have permission to share.
+              </p>
+            </section>
+            <a
+              href="https://github.com/MohammadAliMehri/watchroom/blob/master/docs/SECURITY.md"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex text-violet-300 underline underline-offset-4 hover:text-violet-200"
+            >
+              Read privacy and media security details
+            </a>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -55,6 +55,7 @@ Use your own password; the value above is only an example. Generic failures retu
 | `room:create`       | `{ name, password?, hostOnly? }`    | `{ ok: true, roomId, name }`; requires sign-in; creates without joining                                             |
 | `room:join`         | `{ roomId, password? }`             | The `room:joined` payload is emitted and acknowledged; password required for a non-owner in a protected room        |
 | `room:leave`        | `{}`                                | Leaves the current live room; persistent membership remains                                                         |
+| `room:buffering:update` | `{ buffering: boolean }`            | Reports this viewer's temporary local player buffering state to the room                                           |
 | `sync:control`      | `{ action, currentTime?, itemId? }` | `action` is `play`, `pause`, `seek` or `changeItem`; host restriction applies                                       |
 | `media:prepare`     | `{ url, audioTrackIndex? }`         | `{ success, error? }`; URL must equal the current playlist item's URL; audio ordinal must be a non-negative integer |
 | `playlist:add`      | `{ url, title? }`                   | `{ success: true }` after queue insertion; preparation is separate                                                  |
@@ -75,8 +76,9 @@ Playback control denials can arrive as `error:notice` rather than a failed ackno
 | Event                       | Payload                                                                                                                      |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `rooms:list`                | `{ rooms: RoomSummary[], stats: { totalRooms, liveRooms, viewers } }`; room summaries are filtered to the user's memberships |
-| `room:joined`               | `{ ok, roomId, name, ownerId, ownerName, isOwner, hostOnly, members, playlist, chatHistory, playback }`                      |
+| `room:joined`               | `{ ok, roomId, name, ownerId, ownerName, isOwner, hostOnly, members, bufferingViewers, playlist, chatHistory, playback }`   |
 | `room:members`              | `{ count, names: string[] }` on membership changes                                                                           |
+| `room:buffering`            | `[{ id, name, since }]` for viewers whose player is buffering; removed when playback resumes or the socket leaves            |
 | `room:closed`               | `{ roomId }` when the room is deleted; affected sockets leave it                                                             |
 | `sync:state`                | `PlaybackState`, including source/subtitle/audio metadata and preparation state                                              |
 | `media:progress`            | `{ progress, status }`; pending progress is capped at 99, completed conversion sends 100                                     |
@@ -108,7 +110,7 @@ Initial `members`: `[{ id, name, avatar, isHost }]`. Later presence events conta
 }
 ```
 
-For a playing snapshot, calculate `currentTime + (Date.now() - updatedAt) / 1000`. Both values refer to the same snapshot moment. Restored rooms start paused; media preparation freezes the clock, and stale preparation events cannot replace a newer selection.
+For a playing snapshot, calculate `currentTime + (Date.now() - updatedAt) / 1000`. Both values refer to the same snapshot moment. Restored rooms start paused; media preparation freezes the clock, and stale preparation events cannot replace a newer selection. For converted media, `isPreparing` becomes false after the first complete HLS segment is available; `media:progress` can continue until the full conversion and subtitle extraction finish.
 
 ## Converted asset delivery
 

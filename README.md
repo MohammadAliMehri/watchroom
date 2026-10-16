@@ -26,7 +26,9 @@ Read the [watching guide](docs/USAGE.md) for invitations, episode queues, subtit
 - **Your subtitles:** select embedded text subtitle tracks by language, upload local SRT/VTT files, and adjust subtitle size and timing independently of other viewers. Embedded ASS/SRT/WebVTT text is supported; bitmap subtitles such as PGS/DVD are not.
 - **Your own server:** Docker Compose with persistent storage, a real outbound media firewall, non-root app processes, health checks, and an optional Caddy HTTPS profile.
 
-WatchRoom does not supply a movie catalog or bypass DRM. Bring direct media links you have permission to share. MKV conversion currently completes before playback begins; large files and non-H.264 video can take time.
+WatchRoom does not supply a movie catalog or bypass DRM. Bring direct media links you have permission to share. MKV playback can begin after the first HLS segment is ready while the server continues conversion; large files and non-H.264 video still use server CPU and disk space.
+
+Install WatchRoom from a supported browser for a home-screen shortcut. The app needs an internet connection and does not cache rooms or media for offline playback.
 
 ## Deploy on a server
 

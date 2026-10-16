@@ -7,6 +7,7 @@ import {
   Maximize2,
   Minimize2,
   Tv,
+  LoaderCircle,
 } from "lucide-react";
 import { MemberAvatar } from "./MemberAvatar";
 import { RoomHeader } from "./RoomHeader";
@@ -39,6 +40,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
     isHost,
     isOwner,
     members,
+    bufferingViewers,
     playlist,
     chatMessages,
     playback,
@@ -50,6 +52,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
     changeAudioTrack,
     removeFromPlaylist,
     movePlaylistItem,
+    reportBuffering,
     selectPlaylistItem,
     sendChat,
     retryPlayback,
@@ -89,6 +92,18 @@ export const RoomView: React.FC<RoomViewProps> = ({
             {isRestoringRoom
               ? "Restoring room connection…"
               : "Connection lost. Reconnecting…"}
+          </span>
+        </div>
+      )}
+
+      {bufferingViewers.length > 0 && connected && (
+        <div
+          role="status"
+          className="flex items-center gap-2 border border-violet-400/25 bg-violet-950/40 px-3.5 py-2 rounded-xl text-sm text-violet-100"
+        >
+          <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-violet-300" />
+          <span>
+            Waiting for {bufferingViewers.map((viewer) => viewer.name).join(", ")} to buffer. Their player will catch up when it is ready.
           </span>
         </div>
       )}
@@ -167,6 +182,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
             onFocusLinkInput={handleFocusLink}
             onRetry={retryPlayback}
             onChangeAudioTrack={changeAudioTrack}
+            onBufferingChange={reportBuffering}
           />
 
           {/* Under player in theater mode or mobile: Playlist rendered below */}

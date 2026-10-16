@@ -16,7 +16,7 @@ flowchart LR
   Browser -->|Direct MP4 / WebM / HLS| Source[User's media host]
 ```
 
-Direct formats are fetched by each browser. Incompatible containers such as MKV are fetched once per URL/audio selection by FFmpeg and converted on the server. Conversion completes before WatchRoom publishes the HLS source to the room; this is not progressive playback during encoding.
+Direct formats are fetched by each browser. Incompatible containers such as MKV are fetched once per URL/audio selection by FFmpeg and converted on the server. WatchRoom publishes the HLS source after its first complete segment is ready, then updates the playlist while conversion continues.
 
 ## Modules
 

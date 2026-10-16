@@ -332,6 +332,57 @@ test("Room playback consistency", async (t) => {
     },
   );
 
+  await t.test("Buffering status is room-scoped and cleared on recovery", async () => {
+    const { manager, room, io } = await fixture();
+    const guestSocket = socketFor(guest, room.id);
+    await manager.joinRoom(guestSocket, { roomId: room.id, password: "popcorn" });
+
+    await manager.setViewerBuffering(guestSocket, true);
+    let event = io.events.filter((entry) => entry.event === "room:buffering").at(-1);
+    assert.deepEqual(event.data.map((viewer) => viewer.name), [guest.displayName]);
+
+    await manager.setViewerBuffering(guestSocket, false);
+    event = io.events.filter((entry) => entry.event === "room:buffering").at(-1);
+    assert.deepEqual(event.data, []);
+    await assert.rejects(
+      manager.setViewerBuffering(socketFor({ id: "stranger" }, room.id), true),
+      /Join the room/,
+    );
+  });
+
+  await t.test("A playable HLS preview starts before conversion finishes", async () => {
+    const conversion = deferred();
+    const started = deferred();
+    const { manager, room } = await fixture({
+      mediaPreparer: async (_url, _audio, _progress, onReady) => {
+        onReady?.({
+          type: "hls",
+          key: "wr_streaming-test",
+          src: "/media/wr_streaming-test/index.m3u8",
+          audioStreams: [],
+        });
+        started.resolve();
+        return conversion.promise;
+      },
+    });
+    room.playback.currentItem = await addItem(room, "Streaming");
+    room.playback.isPlaying = true;
+    room.playback.updatedAt = Date.now();
+
+    const pending = manager.prepareRoomMedia(room.id, room.playback.currentItem.url);
+    await started.promise;
+    assert.equal(room.playback.isPreparing, false);
+    assert.equal(room.playback.mediaSrc, "/media/wr_streaming-test/index.m3u8");
+    assert.equal(room.playback.isPlaying, true);
+
+    conversion.reject(new Error("Fixture conversion failed"));
+    const result = await pending;
+    assert.equal(result.success, false);
+    assert.equal(room.playback.mediaSrc, null);
+    assert.equal(room.playback.isPlaying, false);
+    assert.equal(room.playback.prepareError, "Fixture conversion failed");
+  });
+
   await t.test(
     "Guests can queue a first movie in a host-only room without selecting it",
     async () => {

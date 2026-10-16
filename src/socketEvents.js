@@ -35,6 +35,11 @@ export function registerRoomEvents(io, roomManager) {
     bind("room:join", (data) => roomManager.joinRoom(socket, data));
     bind("room:leave", () => roomManager.leaveRoom(socket));
     bind(
+      "room:buffering:update",
+      (data) => roomManager.setViewerBuffering(socket, data.buffering),
+      true,
+    );
+    bind(
       "sync:control",
       (data) => roomManager.handleControl(socket, data),
       true,

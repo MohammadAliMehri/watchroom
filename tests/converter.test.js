@@ -60,7 +60,23 @@ test("Converter: embedded text subtitles are fully converted to WebVTT alongside
   const mkv = path.join(tmpDir, "with-subs.mkv");
   makeMkv(mkv, { withSubtitles: true });
 
-  const result = await prepareMedia(mkv);
+  let preview = null;
+  let metadataExistedAtPreview = true;
+  const result = await prepareMedia(mkv, 0, null, (stream) => {
+    preview = stream;
+    metadataExistedAtPreview = fs.existsSync(
+      path.join(MEDIA_DIR, getJobKey(mkv), "metadata.json"),
+    );
+    const playlist = fs.readFileSync(
+      path.join(MEDIA_DIR, getJobKey(mkv), "index.m3u8"),
+      "utf8",
+    );
+    assert.match(playlist, /#EXT-X-PLAYLIST-TYPE:EVENT/);
+    assert.match(playlist, /seg-0000\.ts/);
+    assert.ok(fs.statSync(path.join(MEDIA_DIR, getJobKey(mkv), "seg-0000.ts")).size > 0);
+  });
+  assert.equal(preview.streaming, true);
+  assert.equal(metadataExistedAtPreview, false);
   assert.equal(result.type, "hls");
   assert.ok(result.subtitles, "subtitle URL must be returned");
 

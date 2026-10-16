@@ -34,13 +34,13 @@ This roadmap turns the seven product ideas for couples and friends into small re
 
 **Add:** Audit touch target sizes, safe-area spacing, orientation changes, and mobile keyboard behavior. Then add a minimal installable PWA shell with a branded manifest and icons. Keep playback online-only; do not cache private media or room data.
 
-**Acceptance:** Signup, invitation, chat, queue, subtitles, and player controls work at phone widths. Install prompts appear only where supported; offline launch explains that a network connection is required.
+**Acceptance:** Signup, invitation, chat, queue, subtitles, and player controls work at phone widths. Install prompts appear only where supported; the app clearly remains online-only and does not cache private room or media data.
 
 ### 5. Start MKV playback before the full conversion finishes
 
-**Already in WatchRoom:** FFmpeg converts MKV and other incompatible sources to HLS, extracts supported text subtitles, and reports preparation progress. Playback currently waits for complete conversion.
+**Already in WatchRoom:** FFmpeg converts MKV and other incompatible sources to HLS, extracts supported text subtitles, and reports preparation progress. Playback starts when the first complete HLS segment is published.
 
-**Add:** Publish a conversion job only after its first playable HLS segment is complete, then append segments while FFmpeg runs. Track job readiness separately from completion; retain atomic cache metadata and cancellation behavior. Add disk-space and concurrent-job limits before enabling this for public deployments.
+**Add:** Harden progressive playback with explicit disk-space limits, bounded in-progress jobs, cancellation, and recovery coverage for interrupted conversions.
 
 **Acceptance:** A representative MKV begins before the full source is converted, seeking remains within published segments, subtitle tracks become available safely, and interrupted/failed jobs clean up without exposing partial playlists as complete media.
 
@@ -64,4 +64,4 @@ This roadmap turns the seven product ideas for couples and friends into small re
 
 Ship one phase at a time. Each phase should include a server-side permission check where a room action changes shared state, a client empty/loading/error state, focused automated coverage, and an update to the usage/API docs. Validate cross-browser behavior with two signed-in accounts before calling a phase complete.
 
-Phase 1 is implemented with persistent, room-wide reordering of upcoming queue entries. Phases 2–7 remain ordered behind it so playback reliability and clear room controls are in place before streaming and installability changes increase the operational surface.
+Queue reordering, room-wide buffering notices, first-segment MKV playback, native invite sharing, the install manifest, and per-browser subtitle preferences are implemented. The room header shows host-only controls on mobile and explains room permissions/privacy. Remaining work includes explicit media disk limits and interrupted-job recovery, a full mobile usability audit, and deeper room settings.

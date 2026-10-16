@@ -304,6 +304,10 @@ function convertToHls(
       "4",
       "-hls_list_size",
       "0",
+      "-hls_playlist_type",
+      "event",
+      "-hls_flags",
+      "temp_file",
       "-hls_segment_filename",
       path.join(job.outDir, "seg-%04d.ts"),
       "-progress",
@@ -343,6 +347,21 @@ function convertToHls(
     let progressBuffer = "";
     let timedOut = false;
     let settled = false;
+    const checkFirstSegment = () => {
+      if (!job.previewResult || job.readyResult) return;
+      try {
+        const playlist = fs.readFileSync(path.join(job.outDir, "index.m3u8"), "utf8");
+        const segments = playlist
+          .split(/\r?\n/)
+          .filter((line) => /^seg-\d+\.ts$/.test(line.trim()));
+        if (segments.some((name) => fs.statSync(path.join(job.outDir, name)).size > 0)) {
+          job.publishReady?.();
+        }
+      } catch {
+        // FFmpeg has not published an atomic playlist/segment pair yet.
+      }
+    };
+    const readyPoll = setInterval(checkFirstSegment, 200);
     const timeout = setTimeout(() => {
       timedOut = true;
       proc.kill();
@@ -352,11 +371,13 @@ function convertToHls(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      clearInterval(readyPoll);
       if (error) reject(error);
       else resolve();
     };
 
     proc.stdout.on("data", (chunk) => {
+      checkFirstSegment();
       progressBuffer = (progressBuffer + chunk.toString()).slice(-65536);
       const lines = progressBuffer.split(/\r?\n/);
       progressBuffer = lines.pop() || "";
@@ -379,6 +400,7 @@ function convertToHls(
       finish(new Error("Cannot read this link as video")),
     );
     proc.once("close", (code) => {
+      checkFirstSegment();
       if (timedOut) return finish(new Error("Media conversion timed out"));
       if (code !== 0)
         return finish(new Error("Cannot read this link as video"));
@@ -394,6 +416,7 @@ export async function prepareMedia(
   url,
   audioTrackIndex = 0,
   onProgress = null,
+  onReady = null,
 ) {
   if (isDirectBrowserPlayable(url)) {
     return { type: "direct", src: url, direct: true };
@@ -408,6 +431,10 @@ export async function prepareMedia(
   if (existingJob) {
     if (onProgress && existingJob.pending)
       existingJob.listeners.add(onProgress);
+    if (onReady && existingJob.pending) {
+      if (existingJob.readyResult) onReady(existingJob.readyResult);
+      else existingJob.readyListeners.add(onReady);
+    }
     touchJob(key);
     return existingJob.promise;
   }
@@ -442,6 +469,19 @@ export async function prepareMedia(
     url,
     outDir,
     listeners: new Set(onProgress ? [onProgress] : []),
+    readyListeners: new Set(onReady ? [onReady] : []),
+    readyResult: null,
+    previewResult: null,
+    publishReady() {
+      if (this.readyResult || !this.previewResult) return;
+      this.readyResult = this.previewResult;
+      for (const listener of this.readyListeners) {
+        try {
+          listener(this.readyResult);
+        } catch {}
+      }
+      this.readyListeners.clear();
+    },
     cleanupTimer: null,
     isReencoding: false,
     promise: null,
@@ -463,6 +503,15 @@ export async function prepareMedia(
 
       fs.rmSync(outDir, { recursive: true, force: true });
       fs.mkdirSync(outDir, { recursive: true });
+      job.previewResult = {
+        type: "hls",
+        key,
+        src: `/media/${key}/index.m3u8`,
+        subtitles: null,
+        subtitleTracks: [],
+        audioStreams: probeInfo.audioStreams,
+        streaming: true,
+      };
       const textSubtitleStreams = probeInfo.subtitleStreams.filter((s) =>
         TEXT_SUBTITLE_CODECS.has((s.codec || "").toLowerCase()),
       );
@@ -540,6 +589,7 @@ export async function prepareMedia(
     .finally(() => {
       job.pending = false;
       job.listeners.clear();
+      job.readyListeners.clear();
     });
 
   return job.promise;
@@ -549,6 +599,10 @@ export async function prepareMedia(
 export function isPreparedMediaAvailable(key) {
   if (!key) return true;
   const dir = path.join(MEDIA_DIR, key);
+  const active = activeJobs.get(key);
+  if (active?.pending && active.readyResult) {
+    return fs.existsSync(path.join(dir, "index.m3u8"));
+  }
   return (
     fs.existsSync(path.join(dir, "metadata.json")) &&
     fs.existsSync(path.join(dir, "index.m3u8"))

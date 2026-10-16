@@ -9,6 +9,8 @@
 
 To confirm both accounts joined the same room, send a short message from each browser and check that it appears in both chat panels.
 
+If another viewer's connection buffers, WatchRoom shows a room notice while their player catches up. Buffering notices do not pause playback automatically.
+
 You can also use **Join by ID**. Existing room members appear in **Your watch rooms**, but non-owner viewers must still provide the room password when joining a password-protected room again. Owners can rejoin their rooms without entering that password.
 
 ## Bring a movie or a whole season
@@ -29,9 +31,9 @@ In a shared-control room, the first queued item is selected automatically. In a 
 
 ## MKV, subtitles and audio
 
-MP4, WebM and HLS normally play directly from the media host. MKV and other incompatible containers are converted on the server. H.264 video is copied where possible; other codecs require more CPU. Conversion currently completes before playback begins, so a long movie can spend a while at **Preparing video**.
+MP4, WebM and HLS normally play directly from the media host. MKV and other incompatible containers are converted on the server. H.264 video is copied where possible; other codecs require more CPU. Playback starts after the first HLS segment is ready while the rest converts; embedded subtitles become selectable after conversion finishes.
 
-Use **CC** to select an embedded text subtitle track, change size or adjust timing. Positive timing offsets delay subtitles; negative offsets show them earlier. **Reset** restores original cue times. You can load a local SRT/VTT when a file has no text subtitles. That upload stays in your browser; other viewers choose their own file or track. PGS/DVD image subtitles are not supported.
+Use **CC** to select an embedded text subtitle track, change size or adjust timing. Positive timing offsets delay subtitles; negative offsets show them earlier. **Reset** restores original cue times. Subtitle visibility, size, and timing are remembered in this browser. You can load a local SRT/VTT when a file has no text subtitles. That upload stays in your browser; other viewers choose their own file or track. PGS/DVD image subtitles are not supported.
 
 The Audio menu appears for converted sources with multiple audio streams. Audio changes are shared by the room and may require a new conversion. Everyone pauses at the current position while it prepares, then resumes together if the room was playing. In host-only mode the host chooses the audio.
 
@@ -41,6 +43,7 @@ The Audio menu appears for converted sources with multiple audio streams. Audio 
 - Use **Theater Mode** for a wider player. Chat, the queue and viewers are tabs in the regular layout.
 - If the browser blocks autoplay, click play or interact with the page. Network buffering can briefly separate viewers; the player corrects large drift when it can play.
 - If your connection drops, WatchRoom attempts to rejoin using the last successful room join. If that fails, join again.
+- WatchRoom can be installed from a supported browser. It still needs an internet connection and does not cache private rooms or media for offline playback.
 - After a server restart, rooms return **paused at their saved position**. The first returning viewer triggers any required preparation. The server does not advance the movie through its downtime.
 - Removing the playing episode selects a remaining neighbor, paused at the beginning. Removing the last episode clears the player.
 
@@ -58,7 +61,7 @@ Room lists show rooms you own or previously joined. Room passwords protect acces
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | The link opens a website instead of video      | Obtain a direct media URL; webpage URLs are not stream links                                  |
 | Direct video works for you but not your friend | Check that their browser can reach the same host, with HTTPS and required CORS                |
-| Preparing takes a long time                    | The complete movie must convert first; H.264 MKV and a faster server/source help              |
+| Playback takes a long time to start             | The first HLS segment must be ready; H.264 MKV and a faster server/source help                |
 | No embedded subtitle appears                   | Check whether the source contains text subtitles; use a local SRT/VTT for bitmap-only sources |
 | “Wrong password”                               | Ask the host for the room password, which is separate from the invite link                    |
 | The server is busy                             | Wait for a conversion slot or a heavy encode to finish                                        |

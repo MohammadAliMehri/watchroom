@@ -19,10 +19,10 @@ For direct playback, the media host must be reachable by **every viewer**, use H
 3. For conversion, FFprobe discovers the first video stream, audio ordinals, text subtitle streams, languages, titles and duration.
 4. H.264 video is copied with `-c:v copy`. Other video codecs use `libx264 -preset ultrafast -tune zerolatency -crf 23`.
 5. The chosen audio stream is converted to stereo AAC (`-c:a aac -ac 2 -b:a 192k`). Sources without audio can still convert.
-6. FFmpeg writes a complete HLS playlist, approximately four-second MPEG-TS segments and WebVTT subtitle files.
-7. After successful FFmpeg exit, WatchRoom atomically writes `metadata.json` as a completion marker, publishes the source and sends the final room state.
+6. FFmpeg writes an HLS event playlist and approximately four-second MPEG-TS segments using atomic temporary files. As soon as the playlist references a complete segment, WatchRoom publishes the stream so playback can begin while conversion continues.
+7. After successful FFmpeg exit, WatchRoom atomically writes `metadata.json` as a completion marker, publishes embedded subtitle tracks and sends the final room state. Subtitle tracks appear after the full conversion finishes.
 
-**Playback starts after the complete conversion**, not when the first segment appears. Large downloads, HEVC/AV1 encoding and subtitle extraction may take significant time. Preparation progress is an estimate from media timestamps, not a download speed or readiness guarantee. When changing audio, the room pauses during preparation and resumes at its frozen position afterward. Selecting another episode cancels the old result's ability to update the room, although its shared conversion may continue and be cached.
+**Playback starts after the first complete HLS segment is published.** Large downloads, HEVC/AV1 encoding and subtitle extraction continue in the background; the player shows conversion progress while new segments arrive. Preparation progress is an estimate from media timestamps, not a download speed or readiness guarantee. If conversion fails after playback starts, WatchRoom stops the partial stream and reports the error. When changing audio, the room pauses during preparation and resumes from its frozen position after the new stream is playable. Selecting another episode cancels the old result's ability to update the room, although its shared conversion may continue and be cached.
 
 ## Subtitles
 
@@ -63,7 +63,7 @@ media/wr_<hash>/
   metadata.json     # completion marker and audio/subtitle metadata
 ```
 
-A partially written `.m3u8` does not make a job ready. Concurrent requests share the pending promise, and cache reuse preserves audio streams and subtitle language labels. Failures remove partial output and release the heavy-encode slot. Late room results/progress are ignored after a newer selection or room deletion.
+A playlist file alone is not a completed cache entry: in-progress playback is published only when the playlist references an atomically written segment, and `metadata.json` is written only after FFmpeg exits successfully. Concurrent requests share the pending promise, and cache reuse preserves audio streams and subtitle language labels. Failures remove partial output and release the heavy-encode slot. Late room results/progress are ignored after a newer selection or room deletion.
 
 | Limit                          | Value                                |
 | ------------------------------ | ------------------------------------ |

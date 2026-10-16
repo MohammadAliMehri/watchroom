@@ -8,6 +8,12 @@ export interface Member {
   isHost: boolean;
 }
 
+export interface BufferingViewer {
+  id: string;
+  name: string;
+  since: number;
+}
+
 export interface ChatMessage {
   id: string;
   sender: string;
@@ -125,6 +131,7 @@ export function useRoom(userId?: string) {
   const [isHost, setIsHost] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const [bufferingViewers, setBufferingViewers] = useState<BufferingViewer[]>([]);
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [playback, setPlayback] = useState<PlaybackState>(initialPlayback);
@@ -137,6 +144,7 @@ export function useRoom(userId?: string) {
     setIsHost(false);
     setIsOwner(false);
     setMembers([]);
+    setBufferingViewers([]);
     setPlaylist([]);
     setChatMessages([]);
     setPlayback(initialPlayback());
@@ -177,6 +185,7 @@ export function useRoom(userId?: string) {
     socket.on("disconnect", () => {
       setConnected(false);
       setIsRestoringRoom(!!joinedRef.current);
+      setBufferingViewers([]);
     });
 
     socket.on(
@@ -198,6 +207,7 @@ export function useRoom(userId?: string) {
         isHost?: boolean;
         isOwner?: boolean;
         members?: Member[];
+        bufferingViewers?: BufferingViewer[];
         playlist?: PlaylistItem[];
         chatHistory?: ChatMessage[];
         playback?: Partial<PlaybackState>;
@@ -209,6 +219,7 @@ export function useRoom(userId?: string) {
         setIsHost(!!data.isHost || !!data.isOwner);
         setIsOwner(!!data.isOwner);
         setMembers(data.members || []);
+        setBufferingViewers(data.bufferingViewers || []);
         setPlaylist(data.playlist || []);
         setChatMessages(data.chatHistory || []);
         // Start from a clean state so a previous room's media never leaks in.
@@ -243,10 +254,13 @@ export function useRoom(userId?: string) {
       setPlayback((prev) => ({ ...prev, ...data }));
     });
 
+    socket.on("room:buffering", (viewers: BufferingViewer[]) => {
+      setBufferingViewers(Array.isArray(viewers) ? viewers : []);
+    });
+
     socket.on("media:progress", (data: { progress: number }) => {
       setPlayback((prev) => ({
         ...prev,
-        isPreparing: data.progress < 100,
         prepareProgress: data.progress,
       }));
     });
@@ -469,6 +483,15 @@ export function useRoom(userId?: string) {
     [activeRoomId],
   );
 
+  const reportBuffering = useCallback(
+    (buffering: boolean) => {
+      if (socketRef.current && activeRoomId) {
+        socketRef.current.emit("room:buffering:update", { buffering });
+      }
+    },
+    [activeRoomId],
+  );
+
   const selectPlaylistItem = useCallback(
     (itemId: string) => {
       if (socketRef.current && activeRoomId) {
@@ -506,6 +529,7 @@ export function useRoom(userId?: string) {
     isHost,
     isOwner,
     members,
+    bufferingViewers,
     playlist,
     chatMessages,
     playback,
@@ -519,6 +543,7 @@ export function useRoom(userId?: string) {
     changeAudioTrack,
     removeFromPlaylist,
     movePlaylistItem,
+    reportBuffering,
     selectPlaylistItem,
     sendChat,
     retryPlayback,

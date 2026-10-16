@@ -39,6 +39,7 @@ interface PlayerProps {
   onFocusLinkInput?: () => void;
   onRetry: () => void;
   onChangeAudioTrack?: (index: number) => void;
+  onBufferingChange?: (buffering: boolean) => void;
 }
 
 function srtToVtt(srtText: string): string {
@@ -49,6 +50,15 @@ function srtToVtt(srtText: string): string {
       .replace(/\r/g, "\n")
       .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2")
   );
+}
+
+function readSubtitlePreference<T>(key: string, fallback: T, validate: (value: unknown) => value is T): T {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(key) || "null");
+    return validate(stored) ? stored : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export const Player: React.FC<PlayerProps> = ({
@@ -62,6 +72,7 @@ export const Player: React.FC<PlayerProps> = ({
   onFocusLinkInput,
   onRetry,
   onChangeAudioTrack,
+  onBufferingChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -88,20 +99,36 @@ export const Player: React.FC<PlayerProps> = ({
   const [fatalError, setFatalError] = useState<string | null>(null);
 
   // Subtitle options states
-  const [subtitlesEnabled, setSubtitlesEnabled] = useState(true);
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(() =>
+    readSubtitlePreference("watchroom.subtitle.enabled", true, (value): value is boolean => typeof value === "boolean"),
+  );
   const [selectedSubTrackId, setSelectedSubTrackId] =
     useState<string>("default");
   const [customSubtitleUrl, setCustomSubtitleUrl] = useState<string | null>(
     null,
   );
   const [customSubtitleLabel, setCustomSubtitleLabel] = useState<string>("");
-  const [subtitleOffset, setSubtitleOffset] = useState<number>(0);
-  const [subtitleFontSize, setSubtitleFontSize] = useState<number>(18);
+  const [subtitleOffset, setSubtitleOffset] = useState<number>(() =>
+    readSubtitlePreference("watchroom.subtitle.offset", 0, (value): value is number => typeof value === "number" && Number.isFinite(value) && value >= -10 && value <= 10),
+  );
+  const [subtitleFontSize, setSubtitleFontSize] = useState<number>(() =>
+    readSubtitlePreference("watchroom.subtitle.fontSize", 18, (value): value is number => typeof value === "number" && [14, 18, 22, 28].includes(value)),
+  );
   const [isSubtitleModalOpen, setIsSubtitleModalOpen] = useState(false);
   const [isAudioMenuOpen, setIsAudioMenuOpen] = useState(false);
   const [selectedAudioIndex, setSelectedAudioIndex] = useState<number>(0);
 
   const canControl = !hostOnly || isHost;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("watchroom.subtitle.enabled", JSON.stringify(subtitlesEnabled));
+      localStorage.setItem("watchroom.subtitle.offset", JSON.stringify(subtitleOffset));
+      localStorage.setItem("watchroom.subtitle.fontSize", JSON.stringify(subtitleFontSize));
+    } catch {
+      // Playback remains usable when browser storage is unavailable.
+    }
+  }, [subtitlesEnabled, subtitleOffset, subtitleFontSize]);
 
   // Format seconds to mm:ss or hh:mm:ss
   const formatTime = (secs: number) => {
@@ -590,7 +617,12 @@ export const Player: React.FC<PlayerProps> = ({
           ref={videoRef}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
+          onWaiting={() => onBufferingChange?.(true)}
+          onStalled={() => onBufferingChange?.(true)}
+          onPlaying={() => onBufferingChange?.(false)}
+          onCanPlay={() => onBufferingChange?.(false)}
           onEnded={() => {
+            onBufferingChange?.(false);
             if (canControl && onNextItem && hasNextItem) {
               onNextItem();
             }
@@ -611,6 +643,13 @@ export const Player: React.FC<PlayerProps> = ({
             />
           )}
         </video>
+
+        {playback.mediaSrc && playback.prepareProgress > 0 && playback.prepareProgress < 100 && (
+          <div className="absolute left-3 top-3 z-20 flex items-center gap-2 rounded-lg border border-white/10 bg-black/75 px-3 py-1.5 text-xs text-gray-200 backdrop-blur">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-300" />
+            <span>Preparing the rest · {playback.prepareProgress}%</span>
+          </div>
+        )}
 
         {/* Poster / Empty State (Section 12.4 & 12.8) */}
         {(!playback.mediaSrc || playback.isPreparing) && (

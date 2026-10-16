@@ -150,7 +150,7 @@ Local `npm start` does not automatically load `.env`; export runtime variables o
 - Use two browser profiles: create a host-only room, invite a second account, confirm a wrong password is rejected, join with the right password, and exchange a chat message. This checks signup, invite retention, room access and cross-viewer chat.
 - Test host-only playback controls with a media source reachable from the actual server network.
 - Test one direct source from both browsers and one MKV through the server's actual network. Confirm embedded text subtitles and at least one audio track.
-- Expect complete conversion before MKV playback; test a realistic file size, not just a tiny fixture.
+- MKV playback starts after the first complete HLS segment; test a realistic file size and a slow source, not just a tiny fixture.
 - Back up SQLite and verify restore. Keep the documented single-instance deployment until shared state/storage is implemented.
 
 [Watching guide](USAGE.md) · [Media pipeline](MEDIA_PIPELINE.md) · [Security boundaries](SECURITY.md)
