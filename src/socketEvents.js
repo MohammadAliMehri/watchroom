@@ -71,6 +71,17 @@ export function registerRoomEvents(io, roomManager) {
       true,
     );
     bind(
+      "playlist:move",
+      (data) =>
+        roomManager.movePlaylistItem(
+          socket.data.roomId,
+          data.itemId,
+          data.direction,
+          socket,
+        ),
+      true,
+    );
+    bind(
       "playlist:select",
       (data) =>
         roomManager.handleControl(socket, {

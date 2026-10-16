@@ -344,10 +344,16 @@ export function createRepo(db) {
 
     async reorderItems(roomId, itemIds) {
       await db.transaction(async (tx) => {
+        // Offset first so databases with a unique (room_id, position) index can
+        // safely swap adjacent queue entries within the same transaction.
+        await tx.run(
+          `UPDATE playlist_items SET position = position + ? WHERE room_id = ?`,
+          [itemIds.length, roomId],
+        );
         for (let i = 0; i < itemIds.length; i++) {
           await tx.run(
             `UPDATE playlist_items SET position = ? WHERE room_id = ? AND id = ?`,
-            [i, itemIds[i], roomId],
+            [i, roomId, itemIds[i]],
           );
         }
       });

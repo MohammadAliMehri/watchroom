@@ -49,6 +49,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
     addBatchToPlaylist,
     changeAudioTrack,
     removeFromPlaylist,
+    movePlaylistItem,
     selectPlaylistItem,
     sendChat,
     retryPlayback,
@@ -179,6 +180,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
               onAddItem={addToPlaylist}
               onAddBatch={addBatchToPlaylist}
               onRemoveItem={removeFromPlaylist}
+              onMoveItem={movePlaylistItem}
             />
           )}
         </div>
@@ -257,6 +259,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
                 onAddItem={addToPlaylist}
                 onAddBatch={addBatchToPlaylist}
                 onRemoveItem={removeFromPlaylist}
+                onMoveItem={movePlaylistItem}
               />
             )}
 

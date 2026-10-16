@@ -1,5 +1,5 @@
 import React, { useState, forwardRef, useImperativeHandle, useRef } from 'react';
-import { Plus, Film, Trash2, Layers, Link as LinkIcon, Tv, CheckCircle2 } from 'lucide-react';
+import { Plus, Film, Trash2, Layers, Link as LinkIcon, Tv, CheckCircle2, ArrowUp, ArrowDown } from 'lucide-react';
 import type { PlaylistItem } from '../hooks/useRoom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ interface PlaylistPanelProps {
   onAddItem: (url: string, title?: string) => Promise<{ success: boolean; error?: string }>;
   onAddBatch?: (items: { url: string; title?: string }[]) => Promise<{ success: boolean; count?: number; error?: string }>;
   onRemoveItem: (id: string) => void;
+  onMoveItem: (id: string, direction: 'up' | 'down') => void;
 }
 
 export interface PlaylistPanelRef {
@@ -28,6 +29,7 @@ export const PlaylistPanel = forwardRef<PlaylistPanelRef, PlaylistPanelProps>(({
   onAddItem,
   onAddBatch,
   onRemoveItem,
+  onMoveItem,
 }, ref) => {
   const [mode, setMode] = useState<'single' | 'batch'>('single');
   const [urlInput, setUrlInput] = useState('');
@@ -104,6 +106,7 @@ export const PlaylistPanel = forwardRef<PlaylistPanelRef, PlaylistPanelProps>(({
   };
 
   const detectedBatchItems = parseBatchUrls(batchText);
+  const currentPosition = playlist.findIndex((item) => item.id === currentItemId);
 
   const handleAddBatch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -339,6 +342,32 @@ export const PlaylistPanel = forwardRef<PlaylistPanelRef, PlaylistPanelProps>(({
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
+                  )}
+                  {!isCurrent && index > currentPosition && (
+                    <div className="flex flex-col -my-1">
+                      <Button
+                        onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, 'up'); }}
+                        aria-label={`Move ${item.title} earlier in playlist`}
+                        title="Move earlier"
+                        disabled={index === currentPosition + 1}
+                        variant="ghost"
+                        size="icon"
+                        className="size-6 text-gray-400 hover:text-white"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        onClick={(e) => { e.stopPropagation(); onMoveItem(item.id, 'down'); }}
+                        aria-label={`Move ${item.title} later in playlist`}
+                        title="Move later"
+                        disabled={index === playlist.length - 1}
+                        variant="ghost"
+                        size="icon"
+                        className="size-6 text-gray-400 hover:text-white"
+                      >
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>

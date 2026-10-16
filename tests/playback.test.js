@@ -298,6 +298,41 @@ test("Room playback consistency", async (t) => {
   );
 
   await t.test(
+    "Members can reorder upcoming episodes without changing the current movie",
+    async () => {
+      const { manager, room } = await fixture();
+      const first = await addItem(room, "First");
+      const second = await addItem(room, "Second");
+      const third = await addItem(room, "Third");
+      room.playback.currentItem = first;
+      room.playback.itemIndex = 0;
+      const guestSocket = socketFor(guest, room.id);
+
+      await manager.movePlaylistItem(room.id, third.id, "up", guestSocket);
+
+      assert.deepEqual(
+        (await repo.listItems(room.id)).map((item) => item.id),
+        [first.id, third.id, second.id],
+      );
+      assert.equal(room.playback.currentItem.id, first.id);
+      assert.equal(room.playback.itemIndex, 0);
+      await assert.rejects(
+        manager.movePlaylistItem(room.id, first.id, "down", guestSocket),
+        /current movie and earlier items cannot be moved/i,
+      );
+      await assert.rejects(
+        manager.movePlaylistItem(
+          room.id,
+          second.id,
+          "down",
+          socketFor({ id: "stranger" }, room.id),
+        ),
+        /Only room members/,
+      );
+    },
+  );
+
+  await t.test(
     "Guests can queue a first movie in a host-only room without selecting it",
     async () => {
       const { manager, room } = await fixture();

@@ -460,6 +460,15 @@ export function useRoom(userId?: string) {
     [activeRoomId],
   );
 
+  const movePlaylistItem = useCallback(
+    (itemId: string, direction: "up" | "down") => {
+      if (socketRef.current && activeRoomId) {
+        socketRef.current.emit("playlist:move", { itemId, direction });
+      }
+    },
+    [activeRoomId],
+  );
+
   const selectPlaylistItem = useCallback(
     (itemId: string) => {
       if (socketRef.current && activeRoomId) {
@@ -509,6 +518,7 @@ export function useRoom(userId?: string) {
     addBatchToPlaylist,
     changeAudioTrack,
     removeFromPlaylist,
+    movePlaylistItem,
     selectPlaylistItem,
     sendChat,
     retryPlayback,

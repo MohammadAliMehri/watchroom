@@ -54,6 +54,8 @@ Caddy sets up automatic HTTPS. The app retains the existing `./data` and `./medi
 
 See the [deployment guide](docs/DEPLOYMENT.md) for backups, upgrades, proxy configuration, resource requirements, and troubleshooting.
 
+See the [product roadmap](docs/PRODUCT_ROADMAP.md) for the staged plan covering the shared queue, synchronization, invitations, mobile, MKV, subtitles, and room privacy.
+
 ## Develop locally
 
 Use Node.js 24 (minimum 22.13) and install `ffmpeg` / `ffprobe` on your PATH.

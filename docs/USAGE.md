@@ -13,6 +13,8 @@ You can also use **Join by ID**. Existing room members appear in **Your watch ro
 
 ## Bring a movie or a whole season
 
+Use the playlist arrows to move upcoming episodes earlier or later in the shared queue. The movie currently playing and items before it stay in place; everyone in the room sees the updated order.
+
 Open **Playlist** (or **Open the playlist** in an empty player). Use **Single URL** to add a direct media link and an optional title. In **Batch** mode, put one episode on each line. Supported line formats include:
 
 ```text

@@ -877,4 +877,43 @@ export class RoomManager {
       void this.prepareRoomMedia(roomId, room.playback.currentItem.url);
     return { success: true };
   }
+
+  async movePlaylistItem(roomId, itemId, direction, socket) {
+    const room = this.rooms.get(roomId);
+    const user = socket.data.user;
+    if (!room || !user || socket.data.roomId !== roomId)
+      throw new Error("Must join a room first");
+    if (direction !== "up" && direction !== "down")
+      throw new Error("Choose whether to move the item up or down.");
+
+    const repo = await getRepo();
+    if (!(await repo.isMember(roomId, user.id)))
+      throw new Error("Only room members can reorder the playlist.");
+    const items = await repo.listItems(roomId);
+    const currentIndex = items.findIndex(
+      (item) => item.id === room.playback.currentItem?.id,
+    );
+    const index = items.findIndex((item) => item.id === itemId);
+    if (index < 0) throw new Error("Playlist item not found.");
+    if (index <= currentIndex)
+      throw new Error("The current movie and earlier items cannot be moved.");
+
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex <= currentIndex || targetIndex >= items.length)
+      return { success: true, unchanged: true };
+
+    [items[index], items[targetIndex]] = [items[targetIndex], items[index]];
+    await repo.reorderItems(
+      roomId,
+      items.map((item) => item.id),
+    );
+    const updated = await repo.listItems(roomId);
+    room.playback.itemIndex = updated.findIndex(
+      (item) => item.id === room.playback.currentItem?.id,
+    );
+    await this.savePlaybackImmediate(roomId);
+    this.io.to(roomId).emit("playlist:updated", updated);
+    this.broadcastSyncState(roomId);
+    return { success: true };
+  }
 }

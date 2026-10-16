@@ -60,10 +60,11 @@ Use your own password; the value above is only an example. Generic failures retu
 | `playlist:add`      | `{ url, title? }`                   | `{ success: true }` after queue insertion; preparation is separate                                                  |
 | `playlist:addBatch` | `{ items: [{ url, title? }] }`      | `{ success: true, count }`; invalid URLs are skipped; all-invalid batches fail                                      |
 | `playlist:remove`   | `{ itemId }`                        | `{ success: true }`; owner or adder only, and only host can remove the current movie in a host-only room            |
+| `playlist:move`     | `{ itemId, direction: "up" \| "down" }` | Moves one upcoming item by one position; current and earlier queue items cannot be moved                           |
 | `playlist:select`   | `{ itemId }`                        | Selects the item via `changeItem`; host restriction applies                                                         |
 | `chat:send`         | `{ text }`                          | Nonempty string; truncated to 500 characters; rapid sends within 400 ms are ignored                                 |
 
-Except `rooms:list`, requests require a signed-in socket. Playback, media, queue and chat actions require the socket to have joined a room. Guests may queue suggestions in a host-only room, but only the owner selects media, controls playback, changes audio or removes the selected movie. The room form requires a 4–100 character password; internal/legacy callers can create passwordless rooms, which still require an account to join.
+Except `rooms:list`, requests require a signed-in socket. Playback, media, queue and chat actions require the socket to have joined a room. Members can reorder upcoming queue items; the selected and earlier items stay fixed. Guests may queue suggestions in a host-only room, but only the owner selects media, controls playback, changes audio or removes the selected movie. The room form requires a 4–100 character password; internal/legacy callers can create passwordless rooms, which still require an account to join.
 
 The browser gives creation, joining and a single queue add 10 seconds for an acknowledgement, and a batch add 30 seconds. Timeouts do not prove that an operation was rolled back; inspect the current queue before retrying a batch.
 
