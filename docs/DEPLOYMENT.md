@@ -58,8 +58,9 @@ A failed protected startup appears in `docker compose logs watchroom`. The stand
 - Direct MP4, WebM and HLS links play through the viewer's browser. The media host must support browser playback and CORS where required. A web page URL, DRM stream or subscription-service URL is not a direct media link.
 - MKV and other incompatible containers are fetched on the server and converted to HLS. H.264 video is copied; other codecs are encoded to H.264. Audio is normalized to stereo AAC.
 - Every embedded text subtitle stream (SRT, ASS/SSA, WebVTT and mov_text) is converted to a selectable WebVTT track with its language and title. ASS styling is reduced to plain cues. Image subtitles such as PGS/DVD are not converted. Viewers can upload a local SRT or VTT as an alternative; it stays in their browser.
-- Conversion currently finishes before playback starts. Large files and HEVC re-encoding can take time. Prefer H.264 MKV sources, fast media hosting and a server with at least 2 vCPUs / 2 GB RAM; 4+ vCPUs helps with HEVC.
-- Up to four cached/active movie jobs and one heavy encode are supported. Allow enough disk space for four of your largest converted movies. Media cache is disposable and clears on app startup.
+- Playback can start after the first complete HLS segment is ready while conversion continues. Large files and HEVC re-encoding can still take time. Prefer H.264 MKV sources and fast media hosting. For a small private instance, plan for at least 2 vCPUs / 2 GB RAM; 4+ vCPUs helps with HEVC.
+- Up to four cached/active movie jobs and one heavy encode are supported. These are application-level limits, not memory or disk quotas. Allow enough disk space for active conversions and the media cache. Media cache is disposable and clears on app startup.
+- A 1 vCPU / 1 GB RAM server can be used for a very small room when most links play directly in browsers. It is a constrained option for server-side MKV conversion; see the [minimum server review](MINIMUM_SERVER_REVIEW.md) before choosing it.
 - The host needs outbound access and DNS for your media hosts. Native FFmpeg fetches do not use browser cookies or proxy-injected API credentials.
 - Only stream content you have permission to share.
 
