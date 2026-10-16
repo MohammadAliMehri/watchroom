@@ -1,19 +1,26 @@
-import React, { useState } from 'react';
-import type { Member } from '../hooks/useRoom';
+import React, { useState } from "react";
+import { MemberAvatar } from "./MemberAvatar";
+import type { Member } from "../hooks/useRoom";
 
 interface AvatarStackProps {
   members: Member[];
   maxVisible?: number;
 }
 
-export const AvatarStack: React.FC<AvatarStackProps> = ({ members, maxVisible = 4 }) => {
+export const AvatarStack: React.FC<AvatarStackProps> = ({
+  members,
+  maxVisible = 4,
+}) => {
   const [hoveredMember, setHoveredMember] = useState<string | null>(null);
 
   const visible = members.slice(0, maxVisible);
   const overflow = members.length - maxVisible;
 
   return (
-    <div className="flex items-center -space-x-2 relative" aria-label="Active watchers">
+    <div
+      className="flex items-center -space-x-2 relative"
+      aria-label="Active watchers"
+    >
       {visible.map((m) => (
         <div
           key={m.id}
@@ -22,9 +29,8 @@ export const AvatarStack: React.FC<AvatarStackProps> = ({ members, maxVisible = 
           onMouseLeave={() => setHoveredMember(null)}
           onClick={() => setHoveredMember(hoveredMember === m.id ? null : m.id)}
         >
-          <img
-            src={m.avatar}
-            alt={m.name}
+          <MemberAvatar
+            name={m.name}
             className="w-7 h-7 rounded-full border border-gray-700 bg-gray-800 object-cover ring-2 ring-[#0b0d12] transition-transform hover:scale-110"
           />
           {m.isHost && (
@@ -37,7 +43,7 @@ export const AvatarStack: React.FC<AvatarStackProps> = ({ members, maxVisible = 
           {/* Hover name tooltip */}
           {hoveredMember === m.id && (
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-0.5 text-xs font-medium text-white bg-gray-900 border border-gray-700 rounded shadow-lg whitespace-nowrap z-50 pointer-events-none">
-              {m.name} {m.isHost ? '(Host)' : ''}
+              {m.name} {m.isHost ? "(Host)" : ""}
             </div>
           )}
         </div>

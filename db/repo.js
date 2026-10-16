@@ -1,4 +1,4 @@
-import { getDb } from './index.js';
+import { getDb } from "./index.js";
 
 export function createRepo(db) {
   return {
@@ -8,14 +8,21 @@ export function createRepo(db) {
       await db.run(
         `INSERT INTO users (id, email, display_name, password_hash, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [id, email.toLowerCase().trim(), displayName.trim(), passwordHash, now, now]
+        [
+          id,
+          email.toLowerCase().trim(),
+          displayName.trim(),
+          passwordHash,
+          now,
+          now,
+        ],
       );
       return {
         id,
         email: email.toLowerCase().trim(),
         displayName: displayName.trim(),
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       };
     },
 
@@ -23,7 +30,7 @@ export function createRepo(db) {
       const row = await db.get(
         `SELECT id, email, display_name AS displayName, password_hash AS passwordHash, created_at AS createdAt, updated_at AS updatedAt
          FROM users WHERE email = ?`,
-        [email.toLowerCase().trim()]
+        [email.toLowerCase().trim()],
       );
       return row || null;
     },
@@ -32,7 +39,7 @@ export function createRepo(db) {
       const row = await db.get(
         `SELECT id, email, display_name AS displayName, password_hash AS passwordHash, created_at AS createdAt, updated_at AS updatedAt
          FROM users WHERE id = ?`,
-        [id]
+        [id],
       );
       return row || null;
     },
@@ -41,7 +48,7 @@ export function createRepo(db) {
       const now = Date.now();
       await db.run(
         `UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?`,
-        [displayName.trim(), now, id]
+        [displayName.trim(), now, id],
       );
       return this.getUserById(id);
     },
@@ -50,7 +57,7 @@ export function createRepo(db) {
       const now = Date.now();
       await db.run(
         `UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`,
-        [passwordHash, now, id]
+        [passwordHash, now, id],
       );
     },
 
@@ -67,7 +74,7 @@ export function createRepo(db) {
       await db.run(
         `INSERT INTO sessions (token_hash, user_id, created_at, expires_at, last_seen_at)
          VALUES (?, ?, ?, ?, ?)`,
-        [tokenHash, userId, now, expiresAt, now]
+        [tokenHash, userId, now, expiresAt, now],
       );
       return { tokenHash, userId, createdAt: now, expiresAt, lastSeenAt: now };
     },
@@ -80,7 +87,7 @@ export function createRepo(db) {
          FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = ?`,
-        [tokenHash]
+        [tokenHash],
       );
 
       if (!row) return null;
@@ -93,14 +100,14 @@ export function createRepo(db) {
           tokenHash: row.tokenHash,
           userId: row.userId,
           expiresAt: row.expiresAt,
-          lastSeenAt: row.lastSeenAt
+          lastSeenAt: row.lastSeenAt,
         },
         user: {
           id: row.id,
           email: row.email,
           displayName: row.displayName,
-          createdAt: row.createdAt
-        }
+          createdAt: row.createdAt,
+        },
       };
     },
 
@@ -108,7 +115,7 @@ export function createRepo(db) {
       const now = Date.now();
       await db.run(
         `UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?`,
-        [now, newExpiresAt, tokenHash]
+        [now, newExpiresAt, tokenHash],
       );
     },
 
@@ -120,7 +127,7 @@ export function createRepo(db) {
       if (keepTokenHash) {
         await db.run(
           `DELETE FROM sessions WHERE user_id = ? AND token_hash != ?`,
-          [userId, keepTokenHash]
+          [userId, keepTokenHash],
         );
       } else {
         await db.run(`DELETE FROM sessions WHERE user_id = ?`, [userId]);
@@ -133,18 +140,26 @@ export function createRepo(db) {
     },
 
     // --- Rooms ---
-    async createRoom({ id, ownerId, name, passwordHash }) {
+    async createRoom({ id, ownerId, name, passwordHash, hostOnly = false }) {
       const now = Date.now();
       await db.transaction(async (tx) => {
         await tx.run(
-          `INSERT INTO rooms (id, owner_id, name, password_hash, item_index, playing, position_sec, position_at, created_at, updated_at)
-           VALUES (?, ?, ?, ?, -1, 0, 0, 0, ?, ?)`,
-          [id, ownerId, name.trim(), passwordHash || '', now, now]
+          `INSERT INTO rooms (id, owner_id, name, password_hash, host_only, item_index, playing, position_sec, position_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, -1, 0, 0, 0, ?, ?)`,
+          [
+            id,
+            ownerId,
+            name.trim(),
+            passwordHash || "",
+            hostOnly ? 1 : 0,
+            now,
+            now,
+          ],
         );
         // Owner automatically becomes a room member
         await tx.run(
           `INSERT INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)`,
-          [id, ownerId, now]
+          [id, ownerId, now],
         );
       });
 
@@ -157,25 +172,25 @@ export function createRepo(db) {
         positionSec: 0,
         positionAt: 0,
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       };
     },
 
     async getRoom(id) {
       const row = await db.get(
-        `SELECT r.id, r.owner_id AS ownerId, r.name, r.password_hash AS passwordHash,
+        `SELECT r.id, r.owner_id AS ownerId, r.name, r.password_hash AS passwordHash, r.host_only AS hostOnly,
                 r.item_index AS itemIndex, r.playing, r.position_sec AS positionSec,
                 r.position_at AS positionAt, r.created_at AS createdAt, r.updated_at AS updatedAt,
                 COALESCE(u.display_name, 'Host') AS ownerName
          FROM rooms r
          LEFT JOIN users u ON u.id = r.owner_id
          WHERE r.id = ?`,
-        [id]
+        [id],
       );
       if (!row) return null;
       return {
         ...row,
-        playing: !!row.playing
+        playing: !!row.playing,
       };
     },
 
@@ -190,7 +205,7 @@ export function createRepo(db) {
            SELECT 1 FROM room_members rm2 WHERE rm2.room_id = r.id AND rm2.user_id = ?
          )
          ORDER BY r.updated_at DESC`,
-        [userId, userId]
+        [userId, userId],
       );
 
       // Fetch nowPlaying for each room
@@ -200,7 +215,7 @@ export function createRepo(db) {
         if (row.itemIndex >= 0) {
           const item = await db.get(
             `SELECT id, title, url FROM playlist_items WHERE room_id = ? AND position = ?`,
-            [row.id, row.itemIndex]
+            [row.id, row.itemIndex],
           );
           if (item) {
             nowPlaying = item.title;
@@ -212,7 +227,7 @@ export function createRepo(db) {
           ownerName: row.ownerName,
           memberCount: Number(row.memberCount) || 0,
           playing: !!row.playing,
-          nowPlaying
+          nowPlaying,
         });
       }
       return results;
@@ -220,22 +235,23 @@ export function createRepo(db) {
 
     async getAllRooms() {
       const rows = await db.all(
-        `SELECT r.id, r.owner_id AS ownerId, r.name, r.password_hash AS passwordHash,
+        `SELECT r.id, r.owner_id AS ownerId, r.name, r.password_hash AS passwordHash, r.host_only AS hostOnly,
                 r.item_index AS itemIndex, r.playing, r.position_sec AS positionSec,
                 r.position_at AS positionAt, r.created_at AS createdAt, r.updated_at AS updatedAt,
                 COALESCE(u.display_name, 'Host') AS ownerName
          FROM rooms r
-         LEFT JOIN users u ON u.id = r.owner_id`
+         LEFT JOIN users u ON u.id = r.owner_id`,
       );
-      return rows.map(r => ({ ...r, playing: !!r.playing }));
+      return rows.map((r) => ({ ...r, playing: !!r.playing }));
     },
 
     async updateRoom(id, { name }) {
       const now = Date.now();
-      await db.run(
-        `UPDATE rooms SET name = ?, updated_at = ? WHERE id = ?`,
-        [name.trim(), now, id]
-      );
+      await db.run(`UPDATE rooms SET name = ?, updated_at = ? WHERE id = ?`, [
+        name.trim(),
+        now,
+        id,
+      ]);
       return this.getRoom(id);
     },
 
@@ -245,7 +261,10 @@ export function createRepo(db) {
       });
     },
 
-    async savePlaybackState(id, { itemIndex, playing, positionSec, positionAt }) {
+    async savePlaybackState(
+      id,
+      { itemIndex, playing, positionSec, positionAt },
+    ) {
       const now = Date.now();
       await db.run(
         `UPDATE rooms
@@ -257,8 +276,8 @@ export function createRepo(db) {
           positionSec !== undefined ? positionSec : 0,
           positionAt !== undefined ? positionAt : 0,
           now,
-          id
-        ]
+          id,
+        ],
       );
     },
 
@@ -270,30 +289,55 @@ export function createRepo(db) {
          FROM playlist_items
          WHERE room_id = ?
          ORDER BY position ASC, created_at ASC`,
-        [roomId]
+        [roomId],
       );
       return rows;
     },
 
-    async addItem({ id, roomId, position, url, title, format, durationSec = 0, addedBy = null }) {
+    async addItem({
+      id,
+      roomId,
+      position,
+      url,
+      title,
+      format,
+      durationSec = 0,
+      addedBy = null,
+    }) {
       const now = Date.now();
       await db.run(
         `INSERT INTO playlist_items (id, room_id, position, url, title, format, duration_sec, added_by, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, roomId, position, url, title, format, durationSec, addedBy, now]
+        [id, roomId, position, url, title, format, durationSec, addedBy, now],
       );
-      return { id, roomId, position, url, title, format, durationSec, addedBy, createdAt: now };
+      return {
+        id,
+        roomId,
+        position,
+        url,
+        title,
+        format,
+        durationSec,
+        addedBy,
+        createdAt: now,
+      };
     },
 
     async removeItem(roomId, itemId) {
       await db.transaction(async (tx) => {
-        const item = await tx.get(`SELECT position FROM playlist_items WHERE room_id = ? AND id = ?`, [roomId, itemId]);
+        const item = await tx.get(
+          `SELECT position FROM playlist_items WHERE room_id = ? AND id = ?`,
+          [roomId, itemId],
+        );
         if (!item) return;
-        await tx.run(`DELETE FROM playlist_items WHERE room_id = ? AND id = ?`, [roomId, itemId]);
+        await tx.run(
+          `DELETE FROM playlist_items WHERE room_id = ? AND id = ?`,
+          [roomId, itemId],
+        );
         // Compact positions
         await tx.run(
           `UPDATE playlist_items SET position = position - 1 WHERE room_id = ? AND position > ?`,
-          [roomId, item.position]
+          [roomId, item.position],
         );
       });
     },
@@ -303,7 +347,7 @@ export function createRepo(db) {
         for (let i = 0; i < itemIds.length; i++) {
           await tx.run(
             `UPDATE playlist_items SET position = ? WHERE room_id = ? AND id = ?`,
-            [i, itemIds[i], roomId]
+            [i, itemIds[i], roomId],
           );
         }
       });
@@ -315,12 +359,12 @@ export function createRepo(db) {
       // Insert or ignore if already member
       const existing = await db.get(
         `SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?`,
-        [roomId, userId]
+        [roomId, userId],
       );
       if (!existing) {
         await db.run(
           `INSERT INTO room_members (room_id, user_id, joined_at) VALUES (?, ?, ?)`,
-          [roomId, userId, now]
+          [roomId, userId, now],
         );
       }
     },
@@ -328,7 +372,7 @@ export function createRepo(db) {
     async isMember(roomId, userId) {
       const row = await db.get(
         `SELECT 1 FROM room_members WHERE room_id = ? AND user_id = ?`,
-        [roomId, userId]
+        [roomId, userId],
       );
       return !!row;
     },
@@ -340,7 +384,7 @@ export function createRepo(db) {
          JOIN users u ON u.id = rm.user_id
          WHERE rm.room_id = ?
          ORDER BY rm.joined_at ASC`,
-        [roomId]
+        [roomId],
       );
       return rows;
     },
@@ -352,7 +396,7 @@ export function createRepo(db) {
         await tx.run(
           `INSERT INTO messages (id, room_id, user_id, nick, text, created_at)
            VALUES (?, ?, ?, ?, ?, ?)`,
-          [id, roomId, userId, nick, text, now]
+          [id, roomId, userId, nick, text, now],
         );
 
         // Keep only the last 200 messages per room. Delete older ones.
@@ -366,7 +410,7 @@ export function createRepo(db) {
                ORDER BY created_at DESC
                LIMIT 200
              )`,
-          [roomId, roomId]
+          [roomId, roomId],
         );
       });
 
@@ -380,10 +424,10 @@ export function createRepo(db) {
          WHERE room_id = ?
          ORDER BY created_at DESC
          LIMIT ?`,
-        [roomId, limit]
+        [roomId, limit],
       );
       return rows.reverse();
-    }
+    },
   };
 }
 

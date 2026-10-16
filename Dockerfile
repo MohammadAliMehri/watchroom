@@ -1,54 +1,40 @@
 # syntax=docker/dockerfile:1
-
-# Stage 1: Build Frontend Assets
-FROM node:22-bookworm-slim AS web-builder
+FROM node:24-bookworm-slim AS web-builder
 WORKDIR /app/web
-
 COPY web/package*.json ./
-RUN npm ci
-
+# Optional corporate/build proxy CA, supplied as a BuildKit secret (never stored).
+RUN --mount=type=secret,id=build_ca \
+    if [ -f /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; \
+    npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 
-# Stage 2: Production Server Runtime
-FROM node:22-bookworm-slim AS runner
+FROM node:24-bookworm-slim AS runner
 WORKDIR /app
-
-# Install FFmpeg, ffprobe, curl, ca-certificates
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    ca-certificates \
-    curl \
-  && rm -rf /var/lib/apt/lists/*
-
-# Set production environment defaults
-ENV NODE_ENV=production \
-    PORT=3000 \
-    MEDIA_DIR=/app/media \
-    MEDIA_EGRESS_PROTECTED=true \
-    ALLOW_UNSAFE_MEDIA_FETCHES=true
-
-# Copy package manifests and install server dependencies
+    ffmpeg ca-certificates iptables util-linux \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system watchroom \
+    && useradd --system --gid watchroom --home-dir /app --shell /usr/sbin/nologin watchroom
+ENV NODE_ENV=production PORT=3000 MEDIA_DIR=/app/media DB_PATH=/app/data/watchroom.db
 COPY package*.json ./
-RUN npm ci --omit=dev
-
-# Copy application source code
+RUN --mount=type=secret,id=build_ca \
+    if [ -f /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; \
+    npm ci --omit=dev --no-audit --no-fund
 COPY server.js ./
 COPY lib/ ./lib/
 COPY routes/ ./routes/
 COPY src/ ./src/
 COPY db/ ./db/
-
-# Copy built frontend assets from web-builder
-COPY --from=web-builder /app/public ./public
-
-# Prepare persistent media and database storage directories
-RUN mkdir -p /app/media /app/data
-
+COPY --from=web-builder /app/web/dist ./public
+COPY scripts/watchroom-egress.sh /usr/local/bin/watchroom-egress
+COPY scripts/docker-entrypoint.sh /usr/local/bin/watchroom-entrypoint
+RUN chmod 755 /usr/local/bin/watchroom-egress /usr/local/bin/watchroom-entrypoint \
+    && chmod -R a+rX /app \
+    && mkdir -p /app/media /app/data \
+    && chown watchroom:watchroom /app/media /app/data
 EXPOSE 3000
-
-# Health check against server healthz endpoint
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e 'fetch("http://localhost:3000/healthz").then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
-
+ENTRYPOINT ["/usr/local/bin/watchroom-entrypoint"]
 CMD ["node", "server.js"]

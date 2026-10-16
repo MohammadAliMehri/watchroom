@@ -1,116 +1,114 @@
-# WatchRoom v2 API & Events Specification
+# HTTP API and Socket.IO events
 
-WatchRoom coordinates state using both HTTP REST endpoints and Socket.IO real-time events.
+This reference describes `server.js`, `routes/` and `src/socketEvents.js`. Send JSON request bodies and use the same-origin `wr_session` cookie; this app has no bearer-token API. Timestamps are epoch milliseconds; playback positions are seconds. Room IDs are eight hexadecimal characters.
 
----
+## HTTP endpoints
 
-## 1. REST Endpoints
+| Method and path              | Request                            | Successful response                                              | Authorization                                    |
+| ---------------------------- | ---------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------ |
+| `GET /healthz`               | none                               | `200 { status: "ok", service: "watchroom-v3", db: "connected" }` | Public; executes `SELECT 1`                      |
+| `GET /api/stats`             | none                               | `200 { totalRooms, liveRooms, viewers }`                         | Public aggregate counts                          |
+| `POST /api/auth/signup`      | `{ email, displayName, password }` | `201 { user }`, sets cookie                                      | Public, rate limited                             |
+| `POST /api/auth/login`       | `{ email, password }`              | `200 { user }`, sets cookie                                      | Public, rate limited                             |
+| `POST /api/auth/logout`      | none                               | `204`, clears cookie and current session                         | Clears cookie even if already unsigned           |
+| `GET /api/auth/me`           | none                               | `200 { user }`                                                   | Signed-in session; otherwise `401`               |
+| `PATCH /api/account`         | `{ displayName }`                  | `200 { user }`                                                   | Signed in                                        |
+| `POST /api/account/password` | `{ currentPassword, newPassword }` | `204`, revokes other sessions                                    | Signed in; verifies current password             |
+| `DELETE /api/account`        | `{ password }`                     | `204`, deletes account and owned rooms                           | Signed in; verifies password                     |
+| `GET /api/rooms`             | none                               | `200 { rooms: RoomItem[] }`                                      | Rooms owned by or previously joined by this user |
+| `PATCH /api/rooms/:id`       | `{ name }`                         | `200 { room: { id, name, ownerId, ownerName } }`                 | Room owner only                                  |
+| `DELETE /api/rooms/:id`      | none                               | `204`; connected viewers receive `room:closed`                   | Room owner only                                  |
 
-### `GET /healthz`
-Health check endpoint used by systemd and reverse proxies.
-- **Response**: `200 OK`
-```json
+**Room creation uses `room:create` over Socket.IO. There is no `POST /api/rooms` creation endpoint.** Do not use the old API examples that created rooms over REST.
+
+`user` contains `{ id, email, displayName, createdAt }`, never the password hash or session token. A `RoomItem` from HTTP contains `{ id, name, ownerId, ownerName, playing, itemIndex, memberCount, nowPlaying }`; `nowPlaying` may be `null`. This differs from the socket summary shape below. HTTP `memberCount` counts saved memberships; socket `viewerCount` counts users currently connected to the room.
+
+Account input: email length 5–254, display name length 2–30 with letters/numbers/spaces/`._-`, password length 8–128 and different from the email. Room names are 1–50 characters at the server. Validation errors normally use `400 { error }`; missing authentication uses `401`, owner violations `403`, missing rooms `404`, duplicates `409`, and auth throttling `429`. Login uses the same `401` message for unknown accounts and wrong passwords.
+
+## Socket session and acknowledgements
+
+Connect using Socket.IO with credentials from the signed-in browser. The handshake associates a database session with the socket. The browser recreates its connection when the signed-in user changes and replays its successful join on a network reconnect.
+
+Requests use object payloads. Undefined/null payloads become `{}`; arrays and other payload types are rejected. Actions requiring a current room fail with `Must join a room first` rather than silently dropping the acknowledgement. Asynchronous handler errors are caught and returned through the callback, or through `error:notice` when there is no callback.
+
+```js
+const created = await socket.timeout(10000).emitWithAck("room:create", {
+  name: "Friday night",
+  password: "popcorn",
+  hostOnly: true,
+});
+if (!created.ok) throw new Error(created.error);
+const joined = await socket.timeout(10000).emitWithAck("room:join", {
+  roomId: created.roomId,
+  password: "popcorn",
+});
+if (!joined.ok) throw new Error(joined.error);
+```
+
+Use your own password; the value above is only an example. Generic failures return `{ ok: false, success: false, error }`. Creation/join use `ok` on success; media/queue operations use `success`. Some older rejection paths return only `{ success: false, error }`, so consumers should use the documented success flag for each action.
+
+## Client → server
+
+| Event               | Payload                             | Result/behavior                                                                                                     |
+| ------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `rooms:list`        | `{}`                                | Emits personalized `rooms:list`; unsigned clients receive an empty room list                                        |
+| `room:create`       | `{ name, password?, hostOnly? }`    | `{ ok: true, roomId, name }`; requires sign-in; creates without joining                                             |
+| `room:join`         | `{ roomId, password? }`             | The `room:joined` payload is emitted and acknowledged; password required for a non-owner in a protected room        |
+| `room:leave`        | `{}`                                | Leaves the current live room; persistent membership remains                                                         |
+| `sync:control`      | `{ action, currentTime?, itemId? }` | `action` is `play`, `pause`, `seek` or `changeItem`; host restriction applies                                       |
+| `media:prepare`     | `{ url, audioTrackIndex? }`         | `{ success, error? }`; URL must equal the current playlist item's URL; audio ordinal must be a non-negative integer |
+| `playlist:add`      | `{ url, title? }`                   | `{ success: true }` after queue insertion; preparation is separate                                                  |
+| `playlist:addBatch` | `{ items: [{ url, title? }] }`      | `{ success: true, count }`; invalid URLs are skipped; all-invalid batches fail                                      |
+| `playlist:remove`   | `{ itemId }`                        | `{ success: true }`; owner or adder only, and only host can remove the current movie in a host-only room            |
+| `playlist:select`   | `{ itemId }`                        | Selects the item via `changeItem`; host restriction applies                                                         |
+| `chat:send`         | `{ text }`                          | Nonempty string; truncated to 500 characters; rapid sends within 400 ms are ignored                                 |
+
+Except `rooms:list`, requests require a signed-in socket. Playback, media, queue and chat actions require the socket to have joined a room. Guests may queue suggestions in a host-only room, but only the owner selects media, controls playback, changes audio or removes the selected movie. The room form requires a 4–100 character password; internal/legacy callers can create passwordless rooms, which still require an account to join.
+
+The browser gives creation, joining and a single queue add 10 seconds for an acknowledgement, and a batch add 30 seconds. Timeouts do not prove that an operation was rolled back; inspect the current queue before retrying a batch.
+
+Playback control denials can arrive as `error:notice` rather than a failed acknowledgement. Wait for `sync:state` to confirm a state change; a generic acknowledgement alone does not prove the movie changed.
+
+## Server → client
+
+| Event                       | Payload                                                                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `rooms:list`                | `{ rooms: RoomSummary[], stats: { totalRooms, liveRooms, viewers } }`; room summaries are filtered to the user's memberships |
+| `room:joined`               | `{ ok, roomId, name, ownerId, ownerName, isOwner, hostOnly, members, playlist, chatHistory, playback }`                      |
+| `room:members`              | `{ count, names: string[] }` on membership changes                                                                           |
+| `room:closed`               | `{ roomId }` when the room is deleted; affected sockets leave it                                                             |
+| `sync:state`                | `PlaybackState`, including source/subtitle/audio metadata and preparation state                                              |
+| `media:progress`            | `{ progress, status }`; pending progress is capped at 99, completed conversion sends 100                                     |
+| `media:error`               | `{ message }` if the current preparation fails                                                                               |
+| `playlist:updated`          | `PlaylistItem[]`                                                                                                             |
+| `chat:message` / `chat:msg` | The same `ChatMessage` on both compatibility event names; deduplicate by `id`                                                |
+| `error:notice`              | `{ message }`, for example a host-only restriction or bad request                                                            |
+
+`RoomSummary`: `{ id, name, ownerId, ownerName, isLive, viewerCount, currentTitle, createdAt }`.
+
+Initial `members`: `[{ id, name, avatar, isHost }]`. Later presence events contain display names only. The current UI renders local initials rather than requesting third-party avatar URLs. `PlaylistItem`: `{ id, roomId, position, url, title, format, durationSec, addedBy, createdAt }`; duration `0` means unknown. `ChatMessage`: `{ id, sender, text, isSystem, timestamp }`. User chat is persisted; playback controls do not currently create system chat messages.
+
+`PlaybackState`:
+
+```ts
 {
-  "status": "ok",
-  "service": "watchroom-v2"
+  currentItem: PlaylistItem | null;
+  currentTime: number;
+  isPlaying: boolean;
+  updatedAt: number;
+  mediaSrc: string | null;
+  mediaType: 'direct' | 'hls' | null;
+  subtitles: string | null;
+  subtitleTracks: { id: string; label: string; language?: string; src: string; default?: boolean }[];
+  audioStreams: { index: number; streamIndex: number; codec: string; language: string; title: string }[];
+  isPreparing: boolean;
+  prepareProgress: number;
+  prepareError: string | null;
 }
 ```
 
-### `GET /api/stats`
-Returns global platform metrics.
-- **Response**: `200 OK`
-```json
-{
-  "totalRooms": 5,
-  "liveRooms": 2,
-  "viewers": 12
-}
-```
+For a playing snapshot, calculate `currentTime + (Date.now() - updatedAt) / 1000`. Both values refer to the same snapshot moment. Restored rooms start paused; media preparation freezes the clock, and stale preparation events cannot replace a newer selection.
 
-### `GET /api/rooms`
-Returns a list of all active rooms.
-- **Response**: `200 OK`
-```json
-[
-  {
-    "id": "rm_9fa2b3",
-    "name": "Movie Night",
-    "isLive": true,
-    "viewerCount": 4,
-    "currentTitle": "Big Buck Bunny",
-    "createdAt": 1791783041334
-  }
-]
-```
+## Converted asset delivery
 
-### `POST /api/rooms`
-Creates a new room.
-- **Body**:
-```json
-{
-  "name": "SciFi Marathon",
-  "password": "secretpassword",
-  "hostOnly": true
-}
-```
-- **Response**: `201 Created`
-```json
-{
-  "id": "rm_9fa2b3",
-  "name": "SciFi Marathon"
-}
-```
-
-### `GET /media/:key/*`
-Serves HLS segments and playlists.
-- `index.m3u8` -> `Content-Type: application/vnd.apple.mpegurl`, `Cache-Control: no-cache`
-- `seg-*.ts` -> `Content-Type: video/mp2t`, `Cache-Control: public, max-age=31536000`
-- `subtitles.vtt` -> `Content-Type: text/vtt`
-
----
-
-## 2. Socket.IO Events
-
-### Client to Server
-
-| Event | Payload | Description |
-|---|---|---|
-| `rooms:list` | *(None)* | Requests the current list of available rooms and stats. |
-| `room:create` | `{ name, password, hostOnly }` | Creates a new room and emits updated room list. |
-| `room:join` | `{ roomId, password, userName }` | Joins a room, authenticates password, and subscribes socket to room updates. |
-| `room:leave` | *(None)* | Leaves the current room. |
-| `sync:control` | `{ action, currentTime, itemId }` | Sends a playback action: `'play'`, `'pause'`, `'seek'`, or `'changeItem'`. |
-| `media:prepare` | `{ url, audioTrackIndex? }` | Requests conversion of a video source to HLS. In host-only rooms, only the host may request media preparation; the acknowledgement returns `{ success, error? }`. |
-| `playlist:add` | `{ url, title? }` | Adds a single video link to the shared playlist. |
-| `playlist:addBatch` | `{ roomId, items: [{ url, title }] }` | Adds multiple video URLs at once (TV shows/seasons). Supports automatic title parsing. |
-| `playlist:remove` | `{ itemId }` | Removes an item from the playlist. |
-| `playlist:select` | `{ itemId }` | Selects an item from the playlist for playback. |
-| `chat:send` | `{ text }` | Sends a chat message or emoji reaction to the room. |
-
-### Server to Client
-
-| Event | Payload | Description |
-|---|---|---|
-| `rooms:list` | `{ rooms, stats }` | Emitted when room list or global stats update. |
-| `room:joined` | `{ roomId, roomName, hostOnly, isHost, members, playlist, chatHistory, playback }` | Initial room state sent upon joining. |
-| `room:members` | `Member[]` | Emitted whenever viewers join, leave, or change roles. |
-| `sync:state` | `PlaybackState` | Broadcast when video position, play/pause state, active item, `subtitleTracks`, or `audioStreams` change. |
-| `media:progress` | `{ progress, status }` | Conversion progress updates ($0-100\%$). |
-| `playlist:updated` | `PlaylistItem[]` | Broadcast whenever the playlist changes. |
-| `chat:message` | `ChatMessage` | Broadcast for new chat messages, emoji reactions, or system action notes. |
-| `error:notice` | `{ message }` | Transient notification (e.g., host-only lock notice). |
-
----
-
-## 3. UI Error Mapping Matrix
-
-As specified in the design guide, internal server messages are mapped to user-friendly copy:
-
-| Server Error String | Displayed Title | Next Step Guidance |
-|---|---|---|
-| `Cannot read this link as video` | *"We couldn't read this link as a video."* | *"Check that it opens in a browser."* |
-| `That address is not allowed` | *"This address can't be used."* | *(None. Do not expose security rule)* |
-| `Server is busy converting another movie` | *"The server is busy converting another movie."* | *"Try again in a few minutes."* |
-| `Server is busy with other movies` | *"The server is busy with other movies."* | *"Try again in a few minutes."* |
-| `Playback error (fatal HLS)` | *"Playback stopped."* | *"Try again" button that reloads the source.* |
-| `Room not found` | *"No room with that ID."* | Return back to join form. |
+`GET /media/:key/index.m3u8`, segments and WebVTT files are served from the disposable media directory. Playlists use `application/vnd.apple.mpegurl` with no-cache/no-store. Segments use `video/mp2t`; text subtitles use `text/vtt`. These URLs are **not membership-authorized**; hashes are cache identifiers, not authentication. See [security scope](SECURITY.md#scope-and-current-boundaries).

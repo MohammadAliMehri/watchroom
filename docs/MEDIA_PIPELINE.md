@@ -1,106 +1,81 @@
-# Media Conversion Pipeline
+# Media pipeline
 
-WatchRoom v2 bridges the gap between browser format constraints and modern video formats (MKV, AVI, MOV, TS).
+## Supported inputs and fetch paths
 
----
+| Input                                             | Fetches the source                    | Playback                               |
+| ------------------------------------------------- | ------------------------------------- | -------------------------------------- |
+| URL pathname ending in `.mp4`, `.webm` or `.m3u8` | Each viewer's browser                 | Direct/native video or HLS.js          |
+| MKV, AVI, MOV, TS and other non-direct URL paths  | FFprobe and FFmpeg on the server      | Converted HLS from WatchRoom           |
+| Local filesystem fixture                          | Converter tests/internal library only | Not accepted through the room URL form |
 
-## 1. Why Conversion is Necessary
+Extensions are a routing heuristic, not proof that a codec is browser-compatible. A signed URL with no recognized extension goes through conversion. A direct media URL must return video or an HLS playlist, not a web page, login form or DRM player. Protected media hosts that depend on browser cookies are not supported by the server conversion path.
 
-Browsers do not support Matroska (`.mkv`) containers reliably:
-- Firefox supports MKV only with VP9 video; H.264 inside MKV fails to play.
-- Chrome and Safari exhibit inconsistent platform support and lack native decoders for audio codecs commonly bundled in MKV files (such as AC3, E-AC3, DTS, and 5.1/7.1 multichannel PCM).
+For direct playback, the media host must be reachable by **every viewer**, use HTTPS when WatchRoom uses HTTPS, and provide CORS where the playback path requires it. For converted playback, the WatchRoom server needs working native DNS and outbound access to the source and its redirects.
 
-**Solution**: WatchRoom modifies the container without re-compressing the video stream whenever possible. It outputs standard HLS (HTTP Live Streaming), creating an `.m3u8` playlist with `.ts` segments containing H.264 video and stereo AAC audio.
+## Preparation sequence
 
----
+1. The room validates the URL scheme and all resolved IP addresses. Server-side HTTP(S) probing/conversion also requires an actual OS egress policy and its startup assertion.
+2. Direct formats return their source URL immediately, without launching FFmpeg. Adding a queue entry does not wait for FFprobe; duration may remain `0` (unknown).
+3. For conversion, FFprobe discovers the first video stream, audio ordinals, text subtitle streams, languages, titles and duration.
+4. H.264 video is copied with `-c:v copy`. Other video codecs use `libx264 -preset ultrafast -tune zerolatency -crf 23`.
+5. The chosen audio stream is converted to stereo AAC (`-c:a aac -ac 2 -b:a 192k`). Sources without audio can still convert.
+6. FFmpeg writes a complete HLS playlist, approximately four-second MPEG-TS segments and WebVTT subtitle files.
+7. After successful FFmpeg exit, WatchRoom atomically writes `metadata.json` as a completion marker, publishes the source and sends the final room state.
 
-## 2. Pipeline Workflow
+**Playback starts after the complete conversion**, not when the first segment appears. Large downloads, HEVC/AV1 encoding and subtitle extraction may take significant time. Preparation progress is an estimate from media timestamps, not a download speed or readiness guarantee. When changing audio, the room pauses during preparation and resumes at its frozen position afterward. Selecting another episode cancels the old result's ability to update the room, although its shared conversion may continue and be cached.
 
-```
-Video URL
-   │
-   ▼
-1. Direct check: .mp4, .webm, .m3u8?
-   │
-   ├─► YES ──► Return direct link (No conversion needed)
-   │
-   └─► NO (MKV, AVI, MOV, TS)
-        │
-        ▼
-2. ffprobe: Read streams & duration
-        │
-        ├─► Video codec == 'h264'?
-        │     ├─► YES ──► Copy video (-c:v copy) [Minimal CPU]
-        │     └─► NO  ──► Transcode (-c:v libx264 -preset ultrafast -tune zerolatency -crf 23)
-        │
-        ├─► Audio streams: Convert selected track to AAC stereo (-c:a aac -ac 2)
-        │
-        ├─► Subtitle streams present?
-        │     └─► Extract ALL embedded text tracks to WebVTT (sub_${index}.vtt + subtitles.vtt)
-        │
-        ▼
-3. Write HLS segments (.ts) + index.m3u8 into /media/<key>/
-        │
-        ▼
-4. Browser plays /media/<key>/index.m3u8 via hls.js with native WebVTT subtitle tracks
-```
+## Subtitles
 
----
+The converter extracts all recognized text subtitle streams: SubRip/SRT, ASS/SSA, `mov_text`, WebVTT and text. ASS styling is reduced to WebVTT text cues. PGS, DVD and other bitmap subtitles are not converted or burned into the video; use an external SRT/VTT instead.
 
-## 3. Online Stream Reconnection & CDN Resilience
+A preferred English (`en`/`eng`) text stream is the default when available; otherwise the first text stream is selected. Missing language tags use `und`, rather than assuming English. The compatibility `subtitles.vtt` contains the default track; each selectable stream also has `sub_<ordinal>.vtt`.
 
-Remote MKV/video URLs hosted on file lockers, cloud providers, and direct links often throttle or drop idle TCP connections. To guarantee reliable playback, FFmpeg and FFprobe are configured with resilient stream reconnection flags and browser headers:
+Actual track objects use `src`, not `url`:
 
-```bash
--reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
--user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" \
--headers "Accept-Encoding: identity\r\n"
-```
-
-These parameters allow the converter to survive momentary connection resets or HTTP chunks ending early without crashing the HLS stream generator.
-
----
-
-## 4. Concurrency Limits & Throttling
-
-To prevent resource exhaustion, the server enforces strict limits:
-
-| Setting | Value | Description |
-|---|---|---|
-| `LIMITS.jobs` | `4` | Maximum number of concurrent active conversion jobs kept simultaneously. |
-| `LIMITS.reencode` | `1` | Maximum concurrent heavy re-encodes (HEVC/AV1 $\to$ H.264). Prevents CPU starvation. |
-| `LIMITS.idleCleanupMs` | `30 mins` | Automatically removes converted media files from disk after 30 minutes without active viewers. |
-
-### Shared Jobs
-If multiple rooms or users play the exact same video URL, they share a single active conversion Promise. Duplicate transcoding runs are never triggered.
-
----
-
-## 5. Subtitles & Audio Track Engine
-
-### Multi-Track Subtitles (WebVTT)
-All embedded subtitle streams (SRT, ASS, SSA, UTF-8) are detected via `ffprobe` and extracted simultaneously:
-```bash
-ffmpeg -y -i <url> -map 0:s:<index> -c:s webvtt /media/<key>/sub_${index}.vtt
-```
-The server returns an array of `subtitleTracks`:
 ```json
-[
-  { "id": "0", "label": "English (sub_0)", "language": "eng", "url": "/media/<key>/sub_0.vtt" },
-  { "id": "1", "label": "Spanish (sub_1)", "language": "spa", "url": "/media/<key>/sub_1.vtt" }
-]
+{
+  "id": "sub_1",
+  "streamIndex": 3,
+  "language": "fas",
+  "label": "فارسی",
+  "src": "/media/wr_example/sub_1.vtt",
+  "default": false
+}
 ```
 
-### Subtitle Client Options
-The redesigned video player includes rich subtitle customization controls:
-- **Track Switcher**: Seamlessly switch between any embedded subtitle track or disable captions.
-- **Timing Offset Adjustment**: Live slider to advance or delay subtitles from `-5.0s` to `+5.0s`.
-- **Typography Sizing**: Adjust font size between Small, Medium, Large, and Extra Large.
-- **Custom File Upload**: Load local `.srt` or `.vtt` files directly from the user's computer.
+The browser's CC menu selects tracks, toggles captions, adjusts size and shifts cue timing. A positive offset displays cues later, a negative offset earlier; Reset restores the original times. Changes are local to each viewer. Local SRT/VTT uploads are read in that browser, converted to a blob URL where needed, and never uploaded or shared with other viewers.
 
-### Audio Track Mapping
-The audio stream index is selectable (`audioTrackIndex`), passed to ffmpeg via `-map 0:a:<index>` and transcoded to stereo AAC:
-```bash
-ffmpeg -i <url> -map 0:v:0 -map 0:a:<index> -c:a aac -ac 2 -b:a 192k ...
+## Audio selection
+
+Audio ordinals are relative to audio streams, starting at `0`; they are not FFprobe's absolute stream indexes. A selected ordinal is mapped with `-map 0:a:<ordinal>`. The default is the first audio stream. Track changes use `media:prepare` for the current playlist URL; in a host-only room only the owner can make that change. Alternate audio selections create separate shared jobs.
+
+## Cache, limits and failure behavior
+
+The key is `wr_` plus the first 16 hexadecimal characters of SHA-256 over `URL#audioOrdinal`. Query strings are part of the key; renewed signed URLs produce a different job. Each completed directory contains:
+
+```text
+media/wr_<hash>/
+  index.m3u8
+  seg-0000.ts
+  seg-0001.ts
+  subtitles.vtt      # only when a default text track exists
+  sub_0.vtt         # individual text tracks, when available
+  metadata.json     # completion marker and audio/subtitle metadata
 ```
-Jobs are keyed by `url + audioTrackIndex` so alternate language tracks do not conflict.
+
+A partially written `.m3u8` does not make a job ready. Concurrent requests share the pending promise, and cache reuse preserves audio streams and subtitle language labels. Failures remove partial output and release the heavy-encode slot. Late room results/progress are ignored after a newer selection or room deletion.
+
+| Limit                          | Value                                |
+| ------------------------------ | ------------------------------------ |
+| Cached/active job slots        | 4                                    |
+| Concurrent heavy video encodes | 1                                    |
+| Idle cleanup                   | 30 minutes after the movie is unused |
+| FFprobe timeout                | 60 seconds                           |
+| FFprobe output cap             | 8 MiB                                |
+| Conversion timeout             | 6 hours                              |
+
+A still-viewed movie is retained if another room becomes empty. Rejoining cancels idle cleanup. Pending conversion cleanup begins after completion, rather than deleting files while FFmpeg is writing them. The entire disposable cache is cleared at app startup.
+
+FFmpeg uses reconnect options for remote input and `Accept-Encoding: identity`. Those options help with interrupted connections; they cannot guarantee that an expired, throttled or authenticated source will work. Expected errors include unsupported/unreadable links, blocked addresses, busy job/encode limits and probe/conversion timeouts.
+
+See the [watching guide](USAGE.md) for user steps and [deployment troubleshooting](DEPLOYMENT.md#troubleshooting) for host checks.

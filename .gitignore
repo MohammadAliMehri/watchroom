@@ -32,3 +32,9 @@ yarn-error.log*
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Public deployment template
+!.env.example
+
+# Keep database backups out of Git and image build contexts.
+backups/
